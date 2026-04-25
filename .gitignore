@@ -11,6 +11,9 @@ venv/
 __pycache__/
 *.pyc
 
+venv/
+.venv/
+env/
 
 # Raw PDFs - hide kar
 data/raw/**/*.pdf
