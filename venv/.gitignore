@@ -1,0 +1,14 @@
+# Ignore data
+data/raw/*
+data/processed/*
+
+# Allow sample
+!data/sample/
+
+# Ignore env
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
