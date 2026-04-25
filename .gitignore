@@ -23,8 +23,7 @@ env/
 data/raw/**/*.pdf
 data/raw/**/*.PDF
 
-# Processed JSON - hide kar  
-data/processed/**/*.json
+
 
 # Par folders dikhne do (gitkeep allow karo)
 !data/raw/.gitkeep
