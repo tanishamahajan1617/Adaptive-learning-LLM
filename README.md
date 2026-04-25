@@ -12,5 +12,10 @@ PDF → Ingestion → Chunking → Embedding → Retrieval → LLM → Adaptive 
 ## Setup
 pip install -r requirements.txt
 
+
+## python version 
+Python 3.13
+
+
 ## Run
 python -m src.ingestion.ingestion_step1
