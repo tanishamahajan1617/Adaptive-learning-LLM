@@ -1,131 +1,102 @@
 import os
 import json
-import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.ingestion.pdf_extractor import extract_text, clean_text
+# -----------------------------------------
+# Input / Output
+# -----------------------------------------
 
-CHUNK_SIZE    = 200
-CHUNK_OVERLAP = 50
-BASE_DIR      = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+INPUT_FILE = r"C:\Users\shibu\OneDrive\Documents\GitHub\Adaptive-learning-LLM\extracted_text\extracted_documents.json"
 
-# ─────────────────────────────
-# 👇 ADD BOOK
-# ─────────────────────────────
-BOOKS = [
-    {
-        "pdf_path"    : os.path.join(BASE_DIR, "data", "raw", "dsa", "clrs_sample.pdf"),
-        "output_path" : os.path.join(BASE_DIR, "data", "processed", "dsa_clrs_chunks.json"),
-        "source"      : "CLRS",
-        "subject"     : "DSA"
-    },
-    {
-        "pdf_path"    : os.path.join(BASE_DIR, "data", "raw", "dsa", "karumanchi_sample.pdf"),
-        "output_path" : os.path.join(BASE_DIR, "data", "processed", "dsa_karumanchi_chunks.json"),
-        "source"      : "Karumanchi",
-        "subject"     : "DSA"
-    },
-    {
-        "pdf_path"    : os.path.join(BASE_DIR, "data", "raw", "os", "silberschatz_sample.pdf"),
-        "output_path" : os.path.join(BASE_DIR, "data", "processed", "os_silberschatz_chunks.json"),
-        "source"      : "Silberschatz",
-        "subject"     : "OS"
-    },
-]
+OUTPUT_FOLDER = r"C:\Users\shibu\OneDrive\Documents\GitHub\Adaptive-learning-LLM\extracted_data\chunked_data"
 
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# ─────────────────────────────
-# CHUNK
-# ─────────────────────────────
-def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    words  = text.split()
-    chunks = []
-    i      = 0
+OUTPUT_FILE = os.path.join(OUTPUT_FOLDER, "chunks.json")
 
-    while i < len(words):
-        chunk = " ".join(words[i:i + chunk_size])
-        chunks.append(chunk)
-        i += chunk_size - overlap
+# -----------------------------------------
+# Load extracted documents
+# -----------------------------------------
 
-    return chunks
+with open(INPUT_FILE, "r", encoding="utf-8") as f:
+    documents = json.load(f)
 
+print(f"Loaded {len(documents)} pages")
 
-# ─────────────────────────────
-# SAVE
-# ─────────────────────────────
-def save_chunks(chunks, output_path, source, subject):
-    if os.path.exists(output_path):
-        os.remove(output_path)
-        print(f"  🗑️  Purani file delete ki")
+# -----------------------------------------
+# Chunking Configuration
+# -----------------------------------------
 
-    data = []
-    for idx, chunk in enumerate(chunks):
-        data.append({
-            "chunk_index" : idx,
-            "text"        : chunk,
-            "source"      : source,
-            "subject"     : subject
+text_splitter = RecursiveCharacterTextSplitter(
+
+    chunk_size=1000,
+    chunk_overlap=200,
+
+    separators=[
+        "\n\n",
+        "\n",
+        ". ",
+        " ",
+        ""
+    ]
+)
+
+all_chunks = []
+
+chunk_id = 1
+
+# -----------------------------------------
+# Chunk every document
+# -----------------------------------------
+
+for doc in documents:
+
+    document = Document(
+        page_content=doc["content"],
+        metadata={
+            "id": doc["id"],
+            "source": doc["source"],
+            "page": doc["page"],
+            "chapter": doc["chapter"],
+            "heading": doc["heading"]
+        }
+    )
+
+    chunks = text_splitter.split_documents([document])
+
+    for number, chunk in enumerate(chunks, start=1):
+
+        all_chunks.append({
+
+            "chunk_id": chunk_id,
+
+            "document_id": chunk.metadata["id"],
+
+            "chunk_number": number,
+
+            "source": chunk.metadata["source"],
+
+            "page": chunk.metadata["page"],
+
+            "chapter": chunk.metadata["chapter"],
+
+            "heading": chunk.metadata["heading"],
+
+            "content": chunk.page_content
+
         })
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        chunk_id += 1
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+# -----------------------------------------
+# Save
+# -----------------------------------------
 
-    print(f"  💾 Saved: {output_path}")
-    return data
+with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    json.dump(all_chunks, f, indent=4, ensure_ascii=False)
 
-
-# ─────────────────────────────
-# PROCESS ONE BOOK
-# ─────────────────────────────
-def process_book(book):
-    pdf_path    = book["pdf_path"]
-    output_path = book["output_path"]
-    source      = book["source"]
-    subject     = book["subject"]
-
-    # PDF exist karta hai?
-    if not os.path.exists(pdf_path):
-        print(f"  ⚠️  PDF nahi mila — skip: {pdf_path}")
-        return
-
-    print(f"\n{'='*50}")
-    print(f"📚 Processing: {source} ({subject})")
-    print(f"{'='*50}")
-
-    # Extract
-    print("📥 Extracting text...")
-    text = extract_text(pdf_path)
-    print(f"  ✅ {len(text):,} characters")
-
-    # Clean
-    print("🧹 Cleaning text...")
-    text = clean_text(text)
-    print(f"  ✅ {len(text):,} characters")
-
-    # Chunk
-    print("✂️  Chunking...")
-    chunks = chunk_text(text)
-    print(f"  ✅ {len(chunks)} chunks")
-
-    # Save
-    print("💾 Saving JSON...")
-    data = save_chunks(chunks, output_path, source, subject)
-
-    print(f"  ✅ Done — {len(data)} chunks saved")
-
-
-# ─────────────────────────────
-# MAIN
-# ─────────────────────────────
-if __name__ == "__main__":
-    print("\n🚀 Multi-Book Ingestion Pipeline Start\n")
-
-    for book in BOOKS:
-        process_book(book)
-
-    print(f"\n{'='*50}")
-    print("✅ All Books Processed!")
-    print(f"{'='*50}\n")
+print(f"\nChunking Completed")
+print(f"Total Chunks : {len(all_chunks)}")
+print(f"Saved : {OUTPUT_FILE}")
