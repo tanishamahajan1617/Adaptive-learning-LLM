@@ -5,7 +5,7 @@ import os
 # Ensure the workspace root is in python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.ingestion.pdf_extractor import clean_text
+from src.ingestion.pdf_extractor import clean_text, extract_and_remove_headers, normalize_spaced_text
 
 class TestPDFExtractor(unittest.TestCase):
     
@@ -44,6 +44,52 @@ class TestPDFExtractor(unittest.TestCase):
         raw = "Chapter 1: Introduction\nThis is the introduction text which is quite long and explains everything.\nSection 1.1\nMore text follows here."
         expected = "Chapter 1: Introduction\n\nThis is the introduction text which is quite long and explains everything.\n\nSection 1.1\n\nMore text follows here."
         self.assertEqual(clean_text(raw), expected)
+
+    def test_extract_and_remove_headers(self):
+        # DSA 1
+        raw1 = "CHAPTER 1. INTRODUCTION 2\nThis is the first sentence."
+        clean, chap, title, sub = extract_and_remove_headers(raw1, 2)
+        self.assertEqual(clean.strip(), "This is the first sentence.")
+        self.assertEqual(chap, "Chapter 1")
+        self.assertEqual(title, "INTRODUCTION")
+        self.assertEqual(sub, "")
+
+        # DSA 2 Even
+        raw2 = "2 ■ Chapter 1 Object-Oriented Programming Using C++\nSome body text."
+        clean, chap, title, sub = extract_and_remove_headers(raw2, 2)
+        self.assertEqual(clean.strip(), "Some body text.")
+        self.assertEqual(chap, "Chapter 1")
+        self.assertEqual(title, "Object-Oriented Programming Using C++")
+        self.assertEqual(sub, "")
+
+        # DSA 2 Odd
+        raw3 = "Section 1.2 Encapsulation ■ 3\nMore body text."
+        clean, chap, title, sub = extract_and_remove_headers(raw3, 3)
+        self.assertEqual(clean.strip(), "More body text.")
+        self.assertEqual(chap, "")
+        self.assertEqual(title, "")
+        self.assertEqual(sub, "1.2 Encapsulation")
+
+        # Standalone chapter start page
+        raw4 = "Chapter 2\nLinked Lists\nLinked lists are data structures."
+        clean, chap, title, sub = extract_and_remove_headers(raw4, 9)
+        self.assertEqual(clean.strip(), "Linked lists are data structures.")
+        self.assertEqual(chap, "Chapter 2")
+        self.assertEqual(title, "Linked Lists")
+        self.assertEqual(sub, "")
+
+        # Spaced DSA 2 Even
+        raw_spaced = "2 ■ C h a p t e r 1 O b j e c t - O r i e n t e d P r o g r a m m i n g U s i n g C + +\nSome body text."
+        clean, chap, title, sub = extract_and_remove_headers(raw_spaced, 2)
+        self.assertEqual(clean.strip(), "Some body text.")
+        self.assertEqual(chap, "Chapter 1")
+        self.assertEqual(title, "Object-Oriented Programming Using C++")
+        self.assertEqual(sub, "")
+
+    def test_normalize_spaced_text(self):
+        spaced = "C h a p t e r 1 O b j e c t - O r i e n t e d"
+        expected = "Chapter 1 Object-Oriented"
+        self.assertEqual(normalize_spaced_text(spaced), expected)
 
 if __name__ == "__main__":
     unittest.main()
