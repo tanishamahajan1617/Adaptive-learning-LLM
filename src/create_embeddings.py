@@ -3,9 +3,7 @@ import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
-# ---------------------------------------------------------
 # Project Paths
-# ---------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,9 +18,7 @@ CHUNKS_PATH = (
 VECTORSTORE_DIR = BASE_DIR / "vectorstores"
 VECTORSTORE_DIR.mkdir(exist_ok=True)
 
-# ---------------------------------------------------------
 # Load Chunk Data
-# ---------------------------------------------------------
 
 print("Loading chunk data...")
 
@@ -31,9 +27,7 @@ with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
 
 print(f"Loaded {len(chunks)} chunks")
 
-# ---------------------------------------------------------
 # Prepare Text for Embedding
-# ---------------------------------------------------------
 
 texts = []
 
@@ -54,17 +48,13 @@ Content:
 
     texts.append(text.strip())
 
-# ---------------------------------------------------------
 # Load Embedding Model
-# ---------------------------------------------------------
 
 print("Loading embedding model...")
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# ---------------------------------------------------------
 # Generate Embeddings
-# ---------------------------------------------------------
 
 print("Generating embeddings...")
 
@@ -74,9 +64,7 @@ embeddings = model.encode(
     convert_to_numpy=True
 )
 
-# ---------------------------------------------------------
 # Save Embeddings
-# ---------------------------------------------------------
 
 embedding_path = VECTORSTORE_DIR / "embeddings.npy"
 
