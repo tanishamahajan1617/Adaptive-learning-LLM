@@ -3,9 +3,7 @@ import numpy as np
 import faiss
 from pathlib import Path
 
-# ---------------------------------------------------------
 # Project Paths
-# ---------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,17 +20,13 @@ CHUNKS_PATH = (
 VECTORSTORE_DIR = BASE_DIR / "vectorstores"
 VECTORSTORE_DIR.mkdir(exist_ok=True)
 
-# ---------------------------------------------------------
-# Load Embeddings
-# ---------------------------------------------------------
+# Load Embedding
 
 print("Loading embeddings...")
 
 embeddings = np.load(EMBEDDINGS_PATH)
 
-# ---------------------------------------------------------
 # Load Chunk Metadata
-# ---------------------------------------------------------
 
 print("Loading chunk metadata...")
 
@@ -41,9 +35,7 @@ with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
 
 print(f"Loaded {len(chunks)} metadata entries")
 
-# ---------------------------------------------------------
 # Create FAISS Index
-# ---------------------------------------------------------
 
 dimension = embeddings.shape[1]
 
@@ -55,9 +47,7 @@ index.add(embeddings.astype(np.float32))
 
 print(f"Added {index.ntotal} vectors to FAISS index")
 
-# ---------------------------------------------------------
 # Save Index
-# ---------------------------------------------------------
 
 index_path = VECTORSTORE_DIR / "faiss_index.bin"
 
