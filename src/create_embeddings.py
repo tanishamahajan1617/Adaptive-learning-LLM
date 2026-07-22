@@ -61,8 +61,18 @@ print("Generating embeddings...")
 embeddings = model.encode(
     texts,
     show_progress_bar=True,
-    convert_to_numpy=True
+    convert_to_numpy=True,
+    normalize_embeddings=True
 )
+
+#Validation
+
+if len(embeddings) != len(chunks):
+    raise ValueError(
+        f"Mismatch detected!\n"
+        f"Number of embeddings: {len(embeddings)}\n"
+        f"Number of chunks: {len(chunks)}"
+    )
 
 # Save Embeddings
 
@@ -73,7 +83,22 @@ np.save(
     embeddings
 )
 
-print(f"Embeddings saved successfully!")
+#Save Metadata
 
-print(f"Location : {embedding_path}")
-print(f"Shape    : {embeddings.shape}")
+metadata_path = VECTORSTORE_DIR / "metadata.json"
+
+with open(metadata_path, "w", encoding="utf-8") as f:
+    json.dump(
+        chunks,
+        f,
+        indent=4,
+        ensure_ascii=False
+    )
+
+#Output
+
+print(f"Embeddings generated successfully!")
+
+print(f"Embedding file : {embedding_path}")
+print("Metadata file : {metadata_path}")
+print(f"Embedding Shape    : {embeddings.shape}")
