@@ -100,5 +100,5 @@ with open(metadata_path, "w", encoding="utf-8") as f:
 print(f"Embeddings generated successfully!")
 
 print(f"Embedding file : {embedding_path}")
-print("Metadata file : {metadata_path}")
+print(f"Metadata file : {metadata_path}")
 print(f"Embedding Shape    : {embeddings.shape}")
