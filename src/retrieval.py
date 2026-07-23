@@ -12,13 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 INDEX_PATH = BASE_DIR / "vectorstores" / "faiss_index.bin"
 
-CHUNKS_PATH = (
-    BASE_DIR
-    / "src"
-    / "ingestion"
-    / "Chunking"
-    / "Chunking_Output.json"
-)
+CHUNKS_PATH = BASE_DIR / "vectorstores" / "metadata.json"
 
 # ----------------------------
 # Load Embedding Model
@@ -50,27 +44,67 @@ print(f"Loaded {len(chunks)} chunks.")
 # ----------------------------
 
 def retrieve(query, top_k=10):
-    """
-    Retrieve the most relevant chunks for a user query.
-    """
 
-    # Convert query into embedding
+    query_lower = query.lower()
+
+    DSA_KEYWORDS = [
+        "binary search tree", "bst", "linked list", "stack",
+        "queue", "graph", "tree", "heap", "sorting",
+        "searching", "binary search", "dfs", "bfs",
+        "hash", "hashing", "avl", "trie"
+    ]
+
+    OS_KEYWORDS = [
+        "operating system", "process", "thread",
+        "deadlock", "paging", "page replacement",
+        "memory", "virtual memory",
+        "cpu scheduling", "disk scheduling",
+        "file system", "semaphore", "mutex"
+    ]
+
+    subject = None
+
+    if any(k in query_lower for k in DSA_KEYWORDS):
+        subject = "DSA"
+
+    elif any(k in query_lower for k in OS_KEYWORDS):
+        subject = "OS"
+
+    # Query embedding
     query_embedding = model.encode(
-    [query],
-    convert_to_numpy=True
-).astype(np.float32)
+        [query],
+        convert_to_numpy=True
+    ).astype(np.float32)
 
-    # Search in FAISS
-    distances, indices = index.search(query_embedding, top_k)
+    # Retrieve more candidates first
+    search_k = 50
 
-    # Collect retrieved chunks
+    distances, indices = index.search(query_embedding, search_k)
+
     retrieved_chunks = []
 
     for idx, distance in zip(indices[0], distances[0]):
-        if idx < len(chunks):
-            chunk = chunks[idx].copy()
-            chunk["distance"] = float(distance)
-            retrieved_chunks.append(chunk)
+
+        if idx >= len(chunks):
+            continue
+
+        chunk = chunks[idx].copy()
+
+        source = chunk.get("source_file", "").upper()
+
+        # ---------- FILTERING ----------
+        if subject == "DSA" and not source.startswith("DSA"):
+            continue
+
+        if subject == "OS" and not source.startswith("OS"):
+            continue
+        # -------------------------------
+
+        chunk["distance"] = float(distance)
+        retrieved_chunks.append(chunk)
+
+        if len(retrieved_chunks) == top_k:
+            break
 
     return retrieved_chunks
 
