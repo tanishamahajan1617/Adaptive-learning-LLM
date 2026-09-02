@@ -1,30 +1,159 @@
-
-
-# Allow sample
-!data/sample/
-
-# Ignore env
-venv/
-.venv/
-
-# Python cache
-__pycache__/
-*.pyc
-
-__pycache__/
-*.pyc
-
+# ============================================================
+# PYTHON VIRTUAL ENVIRONMENTS
+# ============================================================
 
 venv/
 .venv/
 env/
 
-# Raw PDFs - hide kar
+
+# ============================================================
+# ENVIRONMENT VARIABLES / SECRETS
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+
+# ============================================================
+# PYTHON CACHE
+# ============================================================
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.pytest_cache/
+.mypy_cache/
+
+
+# ============================================================
+# MODEL WEIGHTS
+# ============================================================
+
+*.pth
+*.pkl
+*.pt
+*.ckpt
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+# Ignore everything inside raw data
+data/raw/*
 data/raw/**/*.pdf
 data/raw/**/*.PDF
 
-
-
-# Par folders dikhne do (gitkeep allow karo)
+# Keep raw folder in GitHub
 !data/raw/.gitkeep
+
+
+# Ignore processed/generated data
+data/processed/*
+
+# Keep processed folder in GitHub
 !data/processed/.gitkeep
+
+
+# Allow sample data folder
+!data/sample/
+!data/sample/**
+
+
+# ============================================================
+# GENERATED OUTPUTS
+# ============================================================
+
+generated_video/
+generated_audio/
+
+*.mp4
+*.mp3
+*.wav
+*.avi
+*.mov
+*.mkv
+
+
+# ============================================================
+# GENERATED / TEMPORARY FILES
+# ============================================================
+
+*.log
+*.tmp
+*.temp
+
+temp/
+tmp/
+
+
+# ============================================================
+# VECTOR DATABASE / EMBEDDINGS
+# ============================================================
+
+vectorstores/
+
+# FAISS / generated vector files
+*.faiss
+*.index
+
+
+# ============================================================
+# IDE
+# ============================================================
+
+.vscode/
+.idea/
+
+
+# ============================================================
+# OS FILES
+# ============================================================
+
+.DS_Store
+Thumbs.db
+
+
+# ============================================================
+# JUPYTER
+# ============================================================
+
+.ipynb_checkpoints/
+
+
+# ============================================================
+# BUILD / DISTRIBUTION
+# ============================================================
+
+build/
+dist/
+*.egg-info/
+
+
+# ============================================================
+# COVERAGE
+# ============================================================
+
+.coverage
+htmlcov/
+
+
+media/
+
+
+# Virtual environments
+.venv
+.venv/
+venv/
+venv/*
+env/
+env/*
+
+# Camera test outputs
+camera_tests/*.jpg
+camera_tests/*.png
+camera_tests/*.jpeg

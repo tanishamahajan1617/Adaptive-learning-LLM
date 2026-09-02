@@ -3,7 +3,7 @@ import faiss
 import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from video_generation.script_generator import generate_video_script
+
 # ----------------------------
 # Project Paths
 # ----------------------------
@@ -116,7 +116,7 @@ def retrieve(query, top_k=10):
 if __name__ == "__main__":
 
     print("\n" + "=" * 90)
-    print("               ADAPTIVE LEARNING LLM - RETRIEVAL MODULE")
+    print("ADAPTIVE LEARNING LLM - RETRIEVAL MODULE")
     print("=" * 90)
     print("DEBUG: Program started")
     question = input("\nEnter your question: ")
@@ -167,14 +167,4 @@ if __name__ == "__main__":
                 print("Please enter Y or N.")
 
         print("\n" + "=" * 90)
-
-    
-    print("\nGenerating video script...\n")
-    
-    script = generate_video_script(results)
-    
-    print("\nGenerated Video Script")
-    print("=" * 90)
-    print(script)
-
     print("\nRetrieval completed successfully.")
