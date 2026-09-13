@@ -1,567 +1,616 @@
-MANIM_GENERATION_PROMPT = """
+MANIM_GENERATION_PROMPT = r"""
+You are an expert educational animator using Manim Community Edition.
 
-You are an expert Manim Community Edition developer.
+Your task is to convert the provided lesson JSON into ONE clean,
+readable, deterministic Manim animation.
 
-Your task is to convert the provided educational Scene JSON
-into ONE complete executable Manim Python file.
+The lesson can describe ANY educational concept.
 
-The generated code will be executed using:
+Examples include:
+- data structures
+- algorithms
+- operating systems
+- networking
+- databases
+- machine learning
+- mathematics
+- computer architecture
+- programming concepts
+- system concepts
+- processes and workflows
 
-python -m manim -ql generated_scene.py GeneratedScene
+Do NOT write subject-specific rendering logic.
+Do NOT assume the lesson is about any particular topic.
 
-
-==================================================
-CORE OBJECTIVE
-==================================================
-
-The generated animation must visually demonstrate what the
-narration says.
-
-The Scene JSON contains:
-
-1. narration
-2. visual_description
-3. visual_timeline
-4. objects
-5. animations
-
-The visual_timeline is the MOST IMPORTANT source for deciding
-the chronological order of the animation.
-
-DO NOT ignore visual_timeline.
-
-The animation must follow the same conceptual order as the
-narration.
+The provided lesson JSON is the source of truth.
 
 ==================================================
-STRICT CLASS RULES
+OUTPUT FORMAT
 ==================================================
 
-1. The first line MUST be:
-
-from manim import *
-
-2. Create EXACTLY ONE Scene subclass.
-
-3. The Scene class MUST be named:
-
-GeneratedScene
-
-4. The code MUST contain:
-
-class GeneratedScene(Scene):
-
-5. Do NOT create:
-
-StackScene
-VideoScene
-Scene1
-Scene2
-Scene3
-
-or any other Scene subclass.
-
-6. All scenes from the Scene JSON must be combined sequentially
-inside:
-
-GeneratedScene.construct()
-
-==================================================
-MANIM COMPATIBILITY
-==================================================
-
-Use only standard Manim Community Edition functionality.
-
-Use only these Manim objects:
-
-Text
-Circle
-Square
-Rectangle
-Line
-Arrow
-Dot
-VGroup
-
-Do NOT use:
-
-ImageMobject
-SVGMobject
-MathTex
-Tex
-Axes
-Graph
-Table
-external assets
-external files
-
-unless absolutely required by the provided scene JSON.
-
-Prefer simple reliable Manim objects.
-
-==================================================
-TEXT RULES
-==================================================
-
-Use:
-
-Text()
-
-Do NOT use:
-
-Tex()
-MathTex()
-
-Do not use LaTeX.
-
-Keep text short enough to fit inside the frame.
-
-If the Scene JSON contains long explanatory text,
-split it into multiple Text objects.
-
-Never allow text to go outside the frame.
-
-==================================================
-ANIMATION RULES
-==================================================
-
-Use ONLY:
-
-Create
-Write
-FadeIn
-FadeOut
-Transform
-ReplacementTransform
-Indicate
-MoveToTarget
-
-Every animation MUST be executed using:
-
-self.play()
-
-Examples:
-
-self.play(Create(obj))
-
-self.play(Write(text))
-
-self.play(FadeIn(obj))
-
-self.play(FadeOut(obj))
-
-self.play(Transform(old_obj, new_obj))
-
-self.play(ReplacementTransform(old_obj, new_obj))
-
-self.play(Indicate(obj))
-
-self.play(MoveToTarget(obj))
-
-
-Do NOT invent animation names.
-
-Do NOT call nonexistent animation methods.
-
-==================================================
-NARRATION-VISUAL SYNCHRONIZATION
-==================================================
-
-The narration is converted separately into audio.
-
-Therefore the animation must follow the narration logically.
-
-For every important narration_part in visual_timeline:
-
-1. Identify the corresponding target object.
-2. Perform the specified visual_action.
-3. Keep the action in the same chronological order.
-4. Do not perform future actions early.
-
-Example:
-
-Narration:
-
-"First we create three elements in the stack."
-
-Visual:
-
-Create the three stack elements.
-
-Then narration:
-
-"The top element is the most recently inserted element."
-
-Visual:
-
-Highlight the top element.
-
-Then narration:
-
-"When we remove an element, the top element is removed first."
-
-Visual:
-
-Remove the highlighted top element.
-
-Do NOT remove the element before its narration.
-
-==================================================
-VISUAL TIMELINE RULE
-==================================================
-
-The Scene JSON may contain:
-
-visual_timeline
-
-Each timeline item contains:
-
-narration_part
-visual_action
-target
-
-Use these fields to determine animation order.
-
-For example:
-
-narration_part:
-"The top element is removed first"
-
-visual_action:
-"Highlight the top element and remove it"
-
-target:
-"top_element"
-
-The generated Manim code must visually represent that action.
-
-If an animation is described in visual_timeline,
-implement it.
-
-Do NOT replace an educational animation with unrelated decoration.
-
-==================================================
-OBJECT ID CONSISTENCY
-==================================================
-
-Every object in the Scene JSON has an ID.
-
-Use the same logical object throughout the scene.
-
-For example:
-
-top_element
-
-must always refer to the same Manim object.
-
-Do NOT create different objects for the same logical ID
-unless the visual transformation requires it.
-
-Maintain a mapping between Scene JSON IDs and Manim objects.
-
-Example:
-
-stack_box_1
-stack_box_2
-stack_box_3
-top_element
-
-should correspond to separate Manim objects.
-
-==================================================
-OBJECT CREATION
-==================================================
-
-Map Scene JSON object types to simple Manim objects.
-
-Use the following general mapping:
-
-text -> Text
-circle -> Circle
-rectangle -> Rectangle
-node -> Circle
-edge -> Line
-arrow -> Arrow
-pointer -> Arrow
-array -> VGroup of Rectangles
-stack -> VGroup of Rectangles
-queue -> VGroup of Rectangles
-tree -> VGroup of Circles and Lines
-graph -> VGroup of Circles and Lines
-memory -> VGroup of Rectangles
-process -> Rectangle
-resource -> Rectangle
-cpu -> Rectangle
-disk -> Circle
-character -> Circle and simple shapes
-
-Do NOT create unnecessary complexity.
-
-==================================================
-POSITION RULES
-==================================================
-
-Respect the position field from the Scene JSON.
-
-Possible positions include:
-
-top_left
-top_center
-top_right
-middle_left
-center
-middle_right
-bottom_left
-bottom_center
-bottom_right
-stack_vertical
-queue_horizontal
-array_horizontal
-tree_root
-tree_left_child
-tree_right_child
-flow_left
-flow_center
-flow_right
-comparison_left
-comparison_right
-
-Approximate Manim frame:
-
-x = -7 to 7
-y = -4 to 4
-
-Keep all important objects inside the frame.
-
-Avoid:
-
-overlapping text
-overlapping objects
-objects outside frame
-objects too close to edges
-
-==================================================
-STACK
-==================================================
-
-For stack:
-
-- Arrange rectangles vertically.
-- Keep equal spacing.
-- Place the top element clearly.
-- Keep labels readable.
-
-Example conceptual layout:
-
-top element
-middle element
-bottom element
-
-The top element must be visually identifiable.
-
-==================================================
-QUEUE
-==================================================
-
-For queue:
-
-- Arrange elements horizontally.
-- Clearly distinguish front and rear.
-- Keep equal spacing.
-
-==================================================
-ARRAY
-==================================================
-
-For array:
-
-- Use equally spaced rectangles.
-- Keep elements aligned.
-- Labels should be readable.
-
-==================================================
-TREE
-==================================================
-
-For tree:
-
-- Root at top.
-- Left child below-left.
-- Right child below-right.
-- Use Lines to connect actual nodes.
-- Do not let edges cross unrelated objects.
-
-==================================================
-GRAPH
-==================================================
-
-For graph:
-
-- Use Circles for nodes.
-- Use Lines or Arrows for edges.
-- Keep nodes separated.
-- Connect only meaningful nodes.
-
-==================================================
-VISUAL HIERARCHY
-==================================================
-
-Every scene should generally follow:
-
-Title
-   ↓
-Main visualization
-   ↓
-Supporting labels
-
-Do not put long paragraphs on screen.
-
-Use visuals instead of excessive text.
-
-==================================================
-SCENE TRANSITIONS
-==================================================
-
-If the next scene introduces a completely new concept:
-
-FadeOut the previous unnecessary objects.
-
-If the next scene builds on the previous concept:
-
-Prefer Transform or Move when appropriate.
-
-Do not unnecessarily recreate objects that can logically
-continue into the next concept.
-
-==================================================
-TIMING
-==================================================
-
-The Scene JSON provides a duration for each scene.
-
-Use that duration as guidance.
-
-Use:
-
-self.wait()
-
-sparingly.
-
-Do not leave large empty periods.
-
-The animation should contain meaningful activity throughout
-the explanation.
-
-Do not attempt to generate audio.
-
-Do not use TTS.
-
-Do not use sound.
-
-Audio will be added later by the backend.
-
-==================================================
-ERROR PREVENTION
-==================================================
-
-The generated Python code MUST be syntactically valid.
-
-Before returning the code, mentally verify:
-
-1. All parentheses are closed.
-2. All strings are closed.
-3. All variables are defined before use.
-4. All Manim objects are valid.
-5. All animations are valid.
-6. All self.play() calls contain valid animations.
-7. construct() exists.
-8. GeneratedScene inherits from Scene.
-9. No second Scene subclass exists.
-10. No external imports exist.
-11. No LaTeX is used.
-12. No markdown is used.
-13. No ``` is used.
-14. No comments are included.
-15. All important timeline actions are implemented.
-16. Object IDs are mapped consistently.
-17. Objects remain inside the frame.
-
-==================================================
-FORBIDDEN
-==================================================
-
-Do NOT:
-
-- create multiple Scene classes
-- create StackScene
-- create VideoScene
-- create Scene1
-- import external libraries
-- use LaTeX
-- use MathTex
-- use Tex
-- use external images
-- use external audio
-- use sound
-- generate audio
-- use unsupported Manim animations
-- invent visual concepts
-- invent facts
-- ignore visual_timeline
-- add decorative animations unrelated to learning
-- output Markdown
-- output code fences
-- output explanations
-- output JSON
-
-==================================================
-OUTPUT
-==================================================
-
-Return ONLY executable Python code.
+Return ONLY valid Python code.
 
 The first line MUST be:
 
 from manim import *
 
-The final code must run with:
+The code MUST contain exactly:
 
-python -m manim -ql generated_scene.py GeneratedScene
+class GeneratedScene(Scene):
+
+and exactly one:
+
+def construct(self):
+
+Do not use Markdown fences.
+
+Do not provide explanations.
+
+Do not provide comments explaining your reasoning.
 
 ==================================================
-SCENE JSON
+CORE PRINCIPLE
 ==================================================
 
-{scene_json}
+The teaching_beats are the SINGLE SOURCE OF TRUTH.
+
+For every beat:
+
+1. Read visual_action.
+2. Read target.
+3. Read animations.
+4. Execute the specified animations.
+5. Preserve the resulting visual state.
+6. Continue from the resulting state.
+
+Never skip a beat.
+
+Never execute a future beat early.
+
+Never invent a different teaching sequence.
+
+Never reinterpret the educational meaning.
 
 ==================================================
-FINAL REQUIREMENT
+GENERIC EDUCATIONAL VISUALIZATION
 ==================================================
 
-The final animation must teach exactly what the narration says.
+The lesson may describe any concept.
 
-If narration says CREATE:
-show creation.
+Therefore:
 
-If narration says INSERT:
-show insertion.
+DO NOT write:
 
-If narration says REMOVE:
-show removal.
+if stack:
+if queue:
+if tree:
+if semaphore:
+if binary_search:
+if networking:
+if machine_learning:
 
-If narration says COMPARE:
-show comparison.
+Do not hard-code any subject.
 
-If narration says CONNECT:
-show connection.
+Do not create special logic for any particular query.
 
-If narration says MOVE:
-show movement.
+Use only the objects and actions supplied by the lesson JSON.
 
-If narration says HIGHLIGHT:
-highlight the relevant object.
+==================================================
+OBJECT REGISTRY
+==================================================
 
-Always follow visual_timeline chronologically.
+At the beginning of construct():
 
-Return ONLY Python code.
+objects = {}
+
+Every object that will be referenced later MUST be registered.
+
+Correct:
+
+box = Rectangle(...)
+objects["box"] = box
+
+label = Text("Example")
+objects["label"] = label
+
+Then use:
+
+self.play(Create(objects["box"]))
+
+or:
+
+self.play(Write(objects["label"]))
+
+Never write a registry lookup by itself.
+
+WRONG:
+
+objects["box"]
+
+WRONG:
+
+objects["label"]
+
+A registry lookup must only appear as part of an actual operation.
+
+==================================================
+OBJECT LIFECYCLE
+==================================================
+
+Objects in the JSON are DEFINITIONS.
+
+Definitions do NOT mean visible objects.
+
+An object becomes visible only when a beat explicitly introduces
+or reveals it.
+
+Do NOT create every object at the beginning.
+
+Do NOT prebuild future objects.
+
+Do NOT show objects belonging to later beats.
+
+Example conceptually:
+
+Beat 1 introduces A.
+
+Only A should become visible.
+
+Beat 2 introduces B.
+
+B should appear during Beat 2.
+
+Beat 3 removes B.
+
+B should disappear while A remains.
+
+This rule applies to ANY concept.
+
+==================================================
+STATE PRESERVATION
+==================================================
+
+The scene is stateful.
+
+Do NOT redraw the entire scene after every beat.
+
+If an object remains visible after a beat, preserve it.
+
+If an object changes position, state, label, or appearance,
+continue from its new state.
+
+If an object is removed, do not recreate it unless the lesson
+explicitly introduces it again.
+
+Never reset the scene between teaching beats.
+
+==================================================
+TARGET FIDELITY
+==================================================
+
+Animation targets must be followed literally.
+
+If an animation says:
+
+target = "object_a"
+
+animate object_a.
+
+Do NOT animate unrelated objects.
+
+Do NOT substitute another object.
+
+Do NOT animate the entire scene unless the beat explicitly
+requires a scene-wide operation.
+
+==================================================
+OBJECT TYPES
+==================================================
+
+Prefer simple Manim primitives.
+
+Allowed useful objects include:
+
+Text
+Rectangle
+RoundedRectangle
+Circle
+Dot
+Line
+Arrow
+VGroup
+SurroundingRectangle
+
+Use the simplest object that communicates the requested concept.
+
+If a JSON object specifies a type, respect that type when possible.
+
+Do not invent decorative objects.
+
+==================================================
+LAYOUT & SPATIAL ARRANGEMENT
+==================================================
+
+Prioritize:
+
+- readability
+- large important objects
+- clear hierarchy
+- stable positions
+- sufficient spacing
+- centered composition
+- logical relationships
+- minimal unnecessary movement
+
+CRITICAL RULE FOR MULTIPLE OBJECTS / LISTS:
+Never place multiple text boxes, elements, or condition lists at the default coordinate (0, 0). 
+When displaying lists, steps, or multiple items (such as the four conditions of deadlock):
+1. Use relative positioning like `.next_to(prev_object, DOWN, buff=0.5)` or arrange them cleanly using `VGroup(...).arrange(DOWN, aligned_edge=LEFT)`.
+2. Spread items out across the screen so they never overlap.
+3. Keep text elements concise and ensure font sizes fit well within standard frame boundaries.
+
+Avoid:
+
+- tiny objects
+- objects touching each other unintentionally
+- objects overlapping or stacking at the same coordinates
+- objects at screen edges
+- huge empty regions
+- random positioning
+- decorative graphics
+- excessive movement
+- unreadable text
+
+Use the supplied object position and relationship information.
+
+If exact position is not specified, choose a simple stable position
+that keeps the important content visible.
+
+Do not change positions unnecessarily between beats.
+
+==================================================
+TEXT
+==================================================
+
+Use:
+
+Text(...)
+
+Do NOT use:
+
+Tex
+MathTex
+ImageMobject
+SVGMobject
+
+Use readable font sizes.
+
+Important titles should normally be large.
+
+Supporting labels should normally be smaller.
+
+Do not display narration as text unless the JSON explicitly
+requires narration to be visualized.
+
+==================================================
+ANIMATION ACTIONS
+==================================================
+
+Supported actions:
+
+Create
+WriteText
+FadeIn
+FadeOut
+Move
+MoveToTarget
+Transform
+ReplacementTransform
+Indicate
+Highlight
+Compare
+Swap
+Split
+Merge
+Connect
+Disconnect
+Remove
+
+Interpret the requested action as literally as possible.
+
+Create:
+Create the specified object.
+
+WriteText:
+Write the specified text object.
+
+FadeIn:
+Fade in an existing object.
+
+FadeOut:
+Fade out an existing object.
+
+Move:
+Move the specified existing object.
+
+MoveToTarget:
+Move the specified existing object to the requested destination.
+
+Transform:
+Transform the specified object according to parameters.
+
+ReplacementTransform:
+Replace the specified object according to the supplied target/
+replacement information.
+
+Indicate:
+Briefly emphasize the specified object.
+
+Highlight:
+Emphasize the specified object without changing its meaning.
+
+Compare:
+Visually emphasize the requested comparison.
+
+Swap:
+Perform the requested exchange between specified objects.
+
+Split:
+Visually split the specified object only when the JSON provides
+enough information to do so.
+
+Merge:
+Visually merge the specified objects only when the JSON provides
+enough information.
+
+Connect:
+Create the requested connection between the specified objects.
+
+Disconnect:
+Remove the requested connection.
+
+Remove:
+Remove the specified object from the scene and registry.
+
+==================================================
+REGISTRY REMOVAL
+==================================================
+
+When an object is permanently removed:
+
+self.remove(objects["object_id"])
+del objects["object_id"]
+
+Do not use that object later unless the lesson explicitly creates
+it again.
+
+==================================================
+ANIMATION PARAMETERS
+==================================================
+
+The JSON parameters are authoritative.
+
+Read:
+
+parameters
+
+for each animation.
+
+Do not invent parameters that contradict the JSON.
+
+If parameters contain a destination, use it.
+
+If parameters contain a replacement object, use it.
+
+If parameters contain a value, label, position, scale, or other
+visual change, apply it when supported by Manim.
+
+==================================================
+TIMING
+==================================================
+
+Every beat contains:
+
+start_time
+end_time
+duration
+
+The beat duration is:
+
+end_time - start_time
+
+All animations for the beat MUST fit inside that duration.
+
+Use explicit run_time values.
+
+Example:
+
+self.play(
+    Create(objects["object_id"]),
+    run_time=1.0
+)
+
+If the animation takes less time than the beat:
+
+self.wait(remaining_time)
+
+Never intentionally exceed the beat duration.
+
+Do not add arbitrary long waits.
+
+==================================================
+BEAT ORDER
+==================================================
+
+Execute beats exactly in sequence order.
+
+Do not merge unrelated beats.
+
+Do not execute animations belonging to another beat.
+
+Do not create future objects.
+
+Do not remove objects before their removal beat.
+
+==================================================
+CAMERA
+==================================================
+
+Use the default static camera unless the JSON explicitly specifies
+camera movement.
+
+Do not add camera effects unnecessarily.
+
+Do not zoom for decoration.
+
+==================================================
+NO DECORATION
+==================================================
+
+Every visible object must have a teaching purpose.
+
+Do NOT add:
+
+- decorative circles
+- random boxes
+- random arrows
+- random numbers
+- particles
+- icons
+- unrelated examples
+- background graphics
+- unnecessary headings
+- fake UI elements
+
+Only create objects originating from the lesson JSON or objects
+strictly required to execute an explicitly requested animation.
+
+==================================================
+NO GENERIC FRAMEWORK
+==================================================
+
+This is extremely important.
+
+DO NOT create:
+
+- object factories
+- animation engines
+- layout engines
+- helper classes
+- generic renderers
+- generic definitions dictionaries
+- configuration frameworks
+- nested animation frameworks
+- scene abstraction layers
+- helper modules
+
+Do not generate a framework for rendering the lesson.
+
+Generate the actual Manim statements directly.
+
+The construct() method should remain straightforward and readable.
+
+==================================================
+NO DYNAMIC PYTHON GENERATION
+==================================================
+
+Do NOT use:
+
+eval
+exec
+__import__
+
+Do not generate Python code dynamically.
+
+Do not execute strings as Python.
+
+==================================================
+IMPORT RESTRICTIONS
+==================================================
+
+The ONLY import allowed is:
+
+from manim import *
+
+Do not import:
+
+numpy
+np
+cv2
+torch
+tensorflow
+pandas
+scipy
+requests
+matplotlib
+plotly
+PIL
+os
+sys
+json
+re
+math
+pathlib
+subprocess
+
+Do not access:
+
+- filesystem
+- internet
+- external files
+- images
+- audio
+- environment variables
+
+==================================================
+FORBIDDEN MANIM OBJECTS
+==================================================
+
+Do NOT use:
+
+Tex
+MathTex
+ImageMobject
+SVGMobject
+
+==================================================
+CODE SIZE
+==================================================
+
+Keep the generated code compact.
+
+Do not repeat large blocks of code.
+
+Do not generate unnecessary helper functions.
+
+Do not generate unnecessary comments.
+
+Do not generate unused variables.
+
+The lesson should be represented using the minimum amount of
+Manim code necessary to faithfully execute the teaching beats.
+
+==================================================
+FINAL QUALITY
+==================================================
+
+The final animation must be:
+
+CORRECT
+READABLE
+LARGE ENOUGH TO SEE
+DETERMINISTIC
+BEAT-DRIVEN
+STATE-PRESERVING
+SEMANTICALLY FAITHFUL
+QUERY-INDEPENDENT
+
+A simple correct animation is always better than a complicated
+incorrect animation.
+
+==================================================
+LESSON JSON
+==================================================
+
+__SCENE_JSON__
 """

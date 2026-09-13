@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 
 from src.services.live_emotion_pipeline import LiveEmotionPipeline
+from src.services.emotion_state import EmotionState
 
 
 router = APIRouter(
@@ -15,6 +16,9 @@ router = APIRouter(
 # SHARED PIPELINE INSTANCE
 # ============================================================
 
+# Camera is NOT opened here.
+# CameraWorker owns OV9281 Camera 3 and continuously sends
+# frames to this pipeline.
 pipeline = LiveEmotionPipeline(
     camera_index=None,
     headset_mode=True
@@ -24,6 +28,13 @@ pipeline = LiveEmotionPipeline(
 # ============================================================
 # PROCESS EMOTION FRAME
 # ============================================================
+
+# This endpoint is kept for:
+# - manual testing
+# - debugging
+# - sending a single image
+#
+# Normal production flow uses CameraWorker instead.
 
 @router.post("/frame")
 async def process_frame(
@@ -45,7 +56,6 @@ async def process_frame(
                 detail="Empty image received."
             )
 
-
         # ----------------------------------------------------
         # BYTES -> NUMPY
         # ----------------------------------------------------
@@ -54,7 +64,6 @@ async def process_frame(
             contents,
             np.uint8
         )
-
 
         # ----------------------------------------------------
         # NUMPY -> OPENCV IMAGE
@@ -72,7 +81,6 @@ async def process_frame(
                 detail="Could not decode image."
             )
 
-
         # ----------------------------------------------------
         # PROCESS FRAME
         # ----------------------------------------------------
@@ -81,9 +89,8 @@ async def process_frame(
             frame
         )
 
-
         # ----------------------------------------------------
-        # EXTRACT EMOTION
+        # EXTRACT CURRENT RESULT
         # ----------------------------------------------------
 
         emotion_data = result.get(
@@ -102,6 +109,19 @@ async def process_frame(
             )
         )
 
+        predictions_used = int(
+            emotion_data.get(
+                "predictions_used",
+                0
+            )
+        )
+
+        overall_ready = bool(
+            emotion_data.get(
+                "overall_ready",
+                False
+            )
+        )
 
         # ----------------------------------------------------
         # POPUP
@@ -112,7 +132,6 @@ async def process_frame(
             {}
         )
 
-
         # ----------------------------------------------------
         # RESPONSE
         # ----------------------------------------------------
@@ -121,101 +140,98 @@ async def process_frame(
 
             "success": True,
 
-            # -----------------------------------------------
-            # CURRENT / OVERALL EMOTION
-            # -----------------------------------------------
+            # =================================================
+            # EMOTION
+            # =================================================
 
-            "emotion": overall_emotion,
+            "emotion":
+                overall_emotion,
 
-            "confidence": overall_confidence,
+            "confidence":
+                overall_confidence,
 
-            "predictions_used": int(
-                result.get(
-                    "emotion",
-                    {}
-                ).get(
-                    "predictions_used",
-                    0
-                )
-            ),
+            "predictions_used":
+                predictions_used,
 
-            "overall_ready": bool(
-                emotion_data.get(
-                    "overall_ready",
-                    False
-                )
-            ),
+            "overall_ready":
+                overall_ready,
 
-
-            # -----------------------------------------------
+            # =================================================
             # POPUP
-            # -----------------------------------------------
+            # =================================================
 
-            "show_popup": bool(
+            "show_popup":
+                bool(
+                    popup.get(
+                        "show_popup",
+                        False
+                    )
+                ),
+
+            "adaptation":
                 popup.get(
-                    "show_popup",
-                    False
-                )
-            ),
+                    "adaptation"
+                ),
 
-            "adaptation": popup.get(
-                "adaptation"
-            ),
+            "popup_message":
+                popup.get(
+                    "message"
+                ),
 
-            "popup_message": popup.get(
-                "message"
-            ),
-
-
-            # -----------------------------------------------
+            # =================================================
             # CALIBRATION
-            # -----------------------------------------------
+            # =================================================
 
-            "calibration": result.get(
-                "calibration"
-            ),
+            "calibration":
+                result.get(
+                    "calibration"
+                ),
 
-
-            # -----------------------------------------------
+            # =================================================
             # DETECTION
-            # -----------------------------------------------
+            # =================================================
 
-            "face_detected": result.get(
-                "face_detected",
-                False
-            ),
+            "face_detected":
+                result.get(
+                    "face_detected",
+                    False
+                ),
 
-            "eyes_detected": result.get(
-                "eyes_detected",
-                False
-            ),
+            "eyes_detected":
+                result.get(
+                    "eyes_detected",
+                    False
+                ),
 
+            # =================================================
+            # DEBUG FEATURES
+            # =================================================
 
-            # -----------------------------------------------
-            # OPTIONAL DEBUG FEATURES
-            # -----------------------------------------------
+            "gaze_x":
+                result.get(
+                    "gaze_x"
+                ),
 
-            "gaze_x": result.get(
-                "gaze_x"
-            ),
+            "gaze_y":
+                result.get(
+                    "gaze_y"
+                ),
 
-            "gaze_y": result.get(
-                "gaze_y"
-            ),
+            "pupil_size":
+                result.get(
+                    "pupil_size"
+                ),
 
-            "pupil_size": result.get(
-                "pupil_size"
-            ),
+            "normalized_pupil":
+                result.get(
+                    "normalized_pupil"
+                ),
 
-            "normalized_pupil": result.get(
-                "normalized_pupil"
-            ),
-
-            "processing_time": result.get(
-                "processing_time"
-            )
+            "processing_time":
+                result.get(
+                    "processing_time"
+                )
         }
-
 
     # ========================================================
     # HTTP ERROR
@@ -224,7 +240,6 @@ async def process_frame(
     except HTTPException:
 
         raise
-
 
     # ========================================================
     # UNEXPECTED ERROR
@@ -258,10 +273,99 @@ async def acknowledge_popup():
             detail=str(e)
         )
 
+
+# ============================================================
+# CURRENT EMOTION + ADAPTATION STATE
+# ============================================================
+
+# Unity should use THIS endpoint.
+#
+# It does NOT process a camera frame.
+# It only reads the latest state produced by the
+# background CameraWorker.
+
 @router.get("/current")
 async def get_current_emotion():
-        return {
-            "success": True,
-            "emotion": pipeline.last_overall_emotion or "Neutral",
-            "confidence": pipeline.last_overall_confidence or 1.0,
-        }
+
+    # --------------------------------------------------------
+    # READ LATEST SHARED EMOTION
+    # --------------------------------------------------------
+
+    state = EmotionState.get()
+
+    emotion = state["emotion"]
+    confidence = float(
+        state["confidence"]
+    )
+
+    predictions_used = int(
+        state["predictions"]
+    )
+
+    # --------------------------------------------------------
+    # DEFAULT STATE
+    # --------------------------------------------------------
+
+    # At application startup, before the first actual
+    # overall prediction, the learner is considered Neutral.
+    #
+    # Confidence remains 0.0 because the model has not
+    # produced a prediction yet.
+
+    if emotion is None:
+
+        emotion = "Neutral"
+
+        confidence = 0.0
+
+        predictions_used = 0
+
+    # --------------------------------------------------------
+    # POPUP / ADAPTATION
+    # --------------------------------------------------------
+
+    popup_state = pipeline.get_popup_state()
+
+    # --------------------------------------------------------
+    # RESPONSE
+    # --------------------------------------------------------
+
+    return {
+
+        "success": True,
+
+        # ====================================================
+        # CURRENT EMOTION
+        # ====================================================
+
+        "emotion":
+            emotion,
+
+        "confidence":
+            confidence,
+
+        "predictions_used":
+            predictions_used,
+
+        # ====================================================
+        # POPUP
+        # ====================================================
+
+        "show_popup":
+            bool(
+                popup_state.get(
+                    "show_popup",
+                    False
+                )
+            ),
+
+        "adaptation":
+            popup_state.get(
+                "adaptation"
+            ),
+
+        "popup_message":
+            popup_state.get(
+                "message"
+            )
+    }

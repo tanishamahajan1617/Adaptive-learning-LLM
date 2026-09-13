@@ -55,6 +55,7 @@ except ImportError:
 
 from src.services.emotion_service import EmotionService
 from src.services.pupil_calibrator import PupilCalibrator
+from src.services.emotion_state import EmotionState
 
 
 # ============================================================
@@ -199,7 +200,8 @@ class LiveEmotionPipeline:
     def __init__(
         self,
         camera_index=None,
-        headset_mode=HEADSET_MODE
+        headset_mode=HEADSET_MODE,
+        show_preview=False
     ):
 
         print("=" * 60)
@@ -219,6 +221,7 @@ class LiveEmotionPipeline:
         )
 
         self.headset_mode = headset_mode
+        self.show_preview = show_preview
 
         # ====================================================
         # HEADSET ROI CHECK
@@ -369,8 +372,9 @@ class LiveEmotionPipeline:
         print("\nInitializing Pupil Calibrator...")
 
         self.pupil_calibrator = PupilCalibrator(
-            calibration_duration=8.0,
-            min_samples=10
+            calibration_duration=0.0,
+            min_samples=3,
+            max_calibration_duration=5.0
         )
 
         print(
@@ -652,6 +656,8 @@ class LiveEmotionPipeline:
                 self.last_overall_confidence = 0.0
 
                 self.last_overall_predictions = 0
+
+                EmotionState.reset()
 
                 self.popup_emotion_consumed = False
 
@@ -1616,6 +1622,16 @@ class LiveEmotionPipeline:
 
         self.last_overall_predictions = (
             predictions_used
+        )
+
+        # ----------------------------------------------------
+        # UPDATE SHARED EMOTION STATE
+        # ----------------------------------------------------
+
+        EmotionState.update(
+            emotion=emotion,
+            confidence=confidence,
+            predictions=predictions_used
         )
 
         # ----------------------------------------------------
@@ -2807,10 +2823,12 @@ class LiveEmotionPipeline:
                 # DISPLAY
                 # ------------------------------------------------
 
-                cv2.imshow(
-                    "VR Eye Emotion Pipeline",
-                    frame
-                )
+                if self.show_preview:
+
+                    cv2.imshow(
+                        "VR Eye Emotion Pipeline",
+                        frame
+                    )
 
             except Exception as e:
 
@@ -2822,16 +2840,20 @@ class LiveEmotionPipeline:
             # KEYBOARD
             # ----------------------------------------------------
 
-            key = (
-                cv2.waitKey(1)
-                & 0xFF
-            )
+            key = -1
 
-            if key == ord("q"):
+            if self.show_preview:
+
+                key = (
+                    cv2.waitKey(1)
+                    & 0xFF
+                )
+
+            if self.show_preview and key == ord("q"):
 
                 break
 
-            if key == ord("r"):
+            if self.show_preview and key == ord("r"):
 
                 print(
                     "\nResetting pupil calibration..."
@@ -2852,6 +2874,8 @@ class LiveEmotionPipeline:
                 self.last_overall_confidence = 0.0
 
                 self.last_overall_predictions = 0
+
+                EmotionState.reset()
 
                 self.popup_emotion_consumed = False
 
@@ -2972,8 +2996,9 @@ if __name__ == "__main__":
     # ========================================================
 
     pipeline = LiveEmotionPipeline(
-        camera_index=0,
-        headset_mode=True
+        camera_index=3,
+        headset_mode=True,
+        show_preview=True
     )
 
     try:

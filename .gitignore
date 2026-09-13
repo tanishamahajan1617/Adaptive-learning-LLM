@@ -157,3 +157,11 @@ env/*
 camera_tests/*.jpg
 camera_tests/*.png
 camera_tests/*.jpeg
+
+# ============================================================
+# MISC
+# ============================================================
+raw_manim_response.txt
+raw_script_response.txt
+repaired_script_response.txt
+repaired_manim_response.txt

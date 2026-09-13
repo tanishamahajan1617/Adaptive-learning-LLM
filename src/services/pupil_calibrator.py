@@ -3,12 +3,14 @@ import numpy as np
 
 
 class PupilCalibrator:
+
     def __init__(
         self,
-        calibration_duration=8.0,
-        min_samples=10,
-        max_calibration_duration=30.0
+        calibration_duration=3.0,
+        min_samples=5,
+        max_calibration_duration=10.0
     ):
+
         self.calibration_duration = calibration_duration
         self.min_samples = min_samples
         self.max_calibration_duration = max_calibration_duration
@@ -31,6 +33,7 @@ class PupilCalibrator:
     # ---------------------------------------------------------
 
     def start(self):
+
         self.samples.clear()
 
         self.is_calibrating = True
@@ -44,9 +47,15 @@ class PupilCalibrator:
         print("\n" + "=" * 50)
         print("PUPIL CALIBRATION STARTED")
         print("=" * 50)
-        print(f"Minimum samples : {self.min_samples}")
-        print(f"Minimum duration: {self.calibration_duration}s")
-        print(f"Maximum duration: {self.max_calibration_duration}s")
+        print(
+            f"Minimum samples : {self.min_samples}"
+        )
+        print(
+            f"Minimum duration: {self.calibration_duration}s"
+        )
+        print(
+            f"Maximum duration: {self.max_calibration_duration}s"
+        )
         print("=" * 50)
 
     # ---------------------------------------------------------
@@ -63,18 +72,23 @@ class PupilCalibrator:
 
         try:
             value = float(pupil_size)
+
         except (TypeError, ValueError):
             return False
 
         if not np.isfinite(value):
             return False
 
-        # Reject obviously invalid pupil measurements
-        if value < self.min_pupil_size or value > self.max_pupil_size:
+        # Reject invalid measurements
+        if (
+            value < self.min_pupil_size
+            or value > self.max_pupil_size
+        ):
             return False
 
-        # Start timer on FIRST VALID sample
+        # Start timer on first valid sample
         if self.calibration_start is None:
+
             self.calibration_start = time.monotonic()
 
             print(
@@ -95,63 +109,51 @@ class PupilCalibrator:
     # ---------------------------------------------------------
     # UPDATE CALIBRATION
     # ---------------------------------------------------------
-
     def update(self):
 
-        if not self.is_calibrating:
-            return False
-
-        if self.calibration_start is None:
-            return False
-
-        elapsed = time.monotonic() - self.calibration_start
-        sample_count = len(self.samples)
-
-        # -----------------------------------------------------
-        # IMPORTANT:
-        # Do NOT fail just because 8 seconds have passed.
-        #
-        # We first need enough samples.
-        # -----------------------------------------------------
-
-        if sample_count < self.min_samples:
-
-            # Still allow calibration to continue
-            # until maximum timeout.
-            if elapsed < self.max_calibration_duration:
+            if not self.is_calibrating:
                 return False
 
-            # Maximum timeout reached
-            print("\n" + "=" * 50)
-            print("PUPIL CALIBRATION FAILED")
-            print("=" * 50)
-            print(
-                f"Only {sample_count}/{self.min_samples} "
-                f"samples collected."
-            )
-            print("=" * 50)
+            if self.calibration_start is None:
+                return False
 
-            self.is_calibrating = False
-            self.is_calibrated = False
-            self.baseline = None
+            sample_count = len(self.samples)
 
-            self.last_message = (
-                f"Calibration failed: "
-                f"{sample_count}/{self.min_samples} samples."
+            # Finish immediately when enough valid samples arrive
+            if sample_count >= self.min_samples:
+                return self.finish()
+
+            # Timeout
+            elapsed = (
+                time.monotonic()
+                - self.calibration_start
             )
 
+            if elapsed >= self.max_calibration_duration:
+
+                print("\n" + "=" * 50)
+                print("PUPIL CALIBRATION FAILED")
+                print("=" * 50)
+                print(
+                    f"Only {sample_count}/"
+                    f"{self.min_samples} "
+                    f"samples collected."
+                )
+                print("=" * 50)
+
+                self.is_calibrating = False
+                self.is_calibrated = False
+                self.baseline = None
+
+                self.last_message = (
+                    f"Calibration failed: "
+                    f"{sample_count}/"
+                    f"{self.min_samples} samples."
+                )
+
+                return False
+
             return False
-
-        # -----------------------------------------------------
-        # We have enough samples.
-        # Still wait for minimum duration.
-        # -----------------------------------------------------
-
-        if elapsed < self.calibration_duration:
-            return False
-
-        # Enough samples + enough time
-        return self.finish()
 
     # ---------------------------------------------------------
     # FINISH CALIBRATION
@@ -162,27 +164,34 @@ class PupilCalibrator:
         if not self.is_calibrating:
             return False
 
-        sample_count = len(self.samples)
+        sample_count = len(
+            self.samples
+        )
 
         if sample_count < self.min_samples:
 
             print(
                 f"Calibration cannot finish: "
-                f"{sample_count}/{self.min_samples} samples."
+                f"{sample_count}/"
+                f"{self.min_samples} samples."
             )
 
             return False
 
         self.is_calibrating = False
 
-        # Convert samples to numpy
+        # -----------------------------------------------------
+        # NUMPY ARRAY
+        # -----------------------------------------------------
+
         values = np.asarray(
             self.samples,
             dtype=np.float32
         )
 
-        # Remove invalid values
-        values = values[np.isfinite(values)]
+        values = values[
+            np.isfinite(values)
+        ]
 
         if len(values) < self.min_samples:
 
@@ -194,43 +203,64 @@ class PupilCalibrator:
                 "too few valid samples remained."
             )
 
-            print(self.last_message)
+            print(
+                self.last_message
+            )
 
             return False
 
         # -----------------------------------------------------
-        # Remove extreme outliers using IQR
+        # IQR OUTLIER FILTER
         # -----------------------------------------------------
 
-        q1 = np.percentile(values, 25)
-        q3 = np.percentile(values, 75)
+        q1 = np.percentile(
+            values,
+            25
+        )
+
+        q3 = np.percentile(
+            values,
+            75
+        )
 
         iqr = q3 - q1
 
         if iqr > 1e-6:
 
-            lower = q1 - 1.5 * iqr
-            upper = q3 + 1.5 * iqr
+            lower = (
+                q1
+                - 1.5 * iqr
+            )
+
+            upper = (
+                q3
+                + 1.5 * iqr
+            )
 
             filtered = values[
-                (values >= lower) &
+                (values >= lower)
+                &
                 (values <= upper)
             ]
 
         else:
+
             filtered = values
 
-        # If filtering removed too many samples,
-        # use original values.
+        # If filtering removes too many values,
+        # use original valid samples.
         if len(filtered) < self.min_samples:
+
             filtered = values
 
         # -----------------------------------------------------
-        # Baseline = median pupil size
+        # BASELINE
         # -----------------------------------------------------
 
         self.baseline = float(
-            np.median(filtered)
+            np.median(
+                filtered
+            )
         )
 
         self.baseline = float(
@@ -245,16 +275,34 @@ class PupilCalibrator:
 
         self.last_message = (
             f"Calibration successful. "
-            f"Baseline={self.baseline:.6f}"
+            f"Baseline="
+            f"{self.baseline:.6f}"
         )
 
         print("\n" + "=" * 50)
         print("PUPIL CALIBRATION SUCCESSFUL")
         print("=" * 50)
-        print(f"Samples collected : {sample_count}")
-        print(f"Valid samples     : {len(values)}")
-        print(f"Filtered samples  : {len(filtered)}")
-        print(f"Baseline          : {self.baseline:.6f}")
+
+        print(
+            f"Samples collected : "
+            f"{sample_count}"
+        )
+
+        print(
+            f"Valid samples     : "
+            f"{len(values)}"
+        )
+
+        print(
+            f"Filtered samples  : "
+            f"{len(filtered)}"
+        )
+
+        print(
+            f"Baseline          : "
+            f"{self.baseline:.6f}"
+        )
+
         print("=" * 50)
 
         return True
@@ -269,7 +317,10 @@ class PupilCalibrator:
             return None
 
         try:
-            value = float(pupil_size)
+            value = float(
+                pupil_size
+            )
+
         except (TypeError, ValueError):
             return None
 
@@ -285,12 +336,19 @@ class PupilCalibrator:
         if self.baseline <= 0:
             return None
 
-        normalized = value / self.baseline
+        normalized = (
+            value
+            / self.baseline
+        )
 
-        if not np.isfinite(normalized):
+        if not np.isfinite(
+            normalized
+        ):
             return None
 
-        return float(normalized)
+        return float(
+            normalized
+        )
 
     # ---------------------------------------------------------
     # STATUS
@@ -304,6 +362,7 @@ class PupilCalibrator:
             self.is_calibrating
             and self.calibration_start is not None
         ):
+
             elapsed = (
                 time.monotonic()
                 - self.calibration_start
@@ -312,8 +371,8 @@ class PupilCalibrator:
         if self.is_calibrating:
 
             progress = min(
-                elapsed /
-                max(
+                elapsed
+                / max(
                     self.calibration_duration,
                     1e-6
                 ),
@@ -321,24 +380,46 @@ class PupilCalibrator:
             )
 
         else:
+
             progress = 0.0
 
         return {
-            "calibrating": self.is_calibrating,
-            "calibrated": self.is_calibrated,
-            "baseline": self.baseline,
 
-            "samples": len(self.samples),
-            "min_samples": self.min_samples,
+            "calibrating":
+                self.is_calibrating,
 
-            "elapsed": round(elapsed, 3),
+            "calibrated":
+                self.is_calibrated,
 
-            "duration": self.calibration_duration,
-            "max_duration": self.max_calibration_duration,
+            "baseline":
+                self.baseline,
 
-            "progress": round(progress, 3),
+            "samples":
+                len(self.samples),
 
-            "message": self.last_message
+            "min_samples":
+                self.min_samples,
+
+            "elapsed":
+                round(
+                    elapsed,
+                    3
+                ),
+
+            "duration":
+                self.calibration_duration,
+
+            "max_duration":
+                self.max_calibration_duration,
+
+            "progress":
+                round(
+                    progress,
+                    3
+                ),
+
+            "message":
+                self.last_message
         }
 
     # ---------------------------------------------------------
@@ -357,4 +438,6 @@ class PupilCalibrator:
 
         self.last_message = ""
 
-        print("Pupil calibration reset.")
+        print(
+            "Pupil calibration reset."
+        )

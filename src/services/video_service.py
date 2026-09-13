@@ -2,11 +2,13 @@ from pathlib import Path
 
 from src.retrieval import retrieve
 from src.script_generator import generate_video_script
+
 from src.manim_generator import (
     generate_manim_code,
-    clean_manim_code,
-    save_manim_file
+    clean_generated_code,
+    save_manim_code,
 )
+
 from src.renderer import render_video
 from src.tts_generator import create_audio
 from src.merger.video_audio_merger import create_final_video
@@ -33,7 +35,6 @@ class VideoService:
 
         retrieved_chunks = retrieve(query)
 
-
         # -----------------------------------------
         # 2. GENERATE SCENE JSON
         # -----------------------------------------
@@ -48,22 +49,49 @@ class VideoService:
             }
         )
 
+        # -----------------------------------------
+        # 3. GENERATE TTS + TIMING
+        # -----------------------------------------
+
+        print("\n[3/6] Generating narration + timing...")
+
+        audio_files = create_audio(scene_json)
+
+        print(
+            f"Generated {len(audio_files)} audio files."
+        )
+
+        # At this point scene_json contains:
+        #
+        # scene["audio_duration"]
+        #
+        # and each beat contains:
+        #
+        # start_time
+        # end_time
+        # duration
+        #
+        # Example:
+        #
+        # Beat 1: 0.0 -> 2.1
+        # Beat 2: 2.1 -> 4.5
+        # Beat 3: 4.5 -> 8.42
 
         # -----------------------------------------
-        # 3. GENERATE MANIM CODE
+        # 4. GENERATE MANIM CODE
         # -----------------------------------------
 
-        print("\n[3/6] Generating Manim code...")
+        print("\n[4/6] Generating Manim code...")
 
         manim_code = generate_manim_code(
             scene_json
         )
 
-        manim_code = clean_manim_code(
+        manim_code = clean_generated_code(
             manim_code
         )
 
-        save_manim_file(
+        save_manim_code(
             manim_code,
             str(MANIM_FILE)
         )
@@ -72,12 +100,11 @@ class VideoService:
             f"Generated Manim file: {MANIM_FILE}"
         )
 
-
         # -----------------------------------------
-        # 4. RENDER MANIM VIDEO
+        # 5. RENDER MANIM VIDEO
         # -----------------------------------------
 
-        print("\n[4/6] Rendering video...")
+        print("\n[5/6] Rendering video...")
 
         video_path = render_video(
             manim_file=str(MANIM_FILE),
@@ -88,21 +115,6 @@ class VideoService:
         print(
             f"Video rendered: {video_path}"
         )
-
-
-        # -----------------------------------------
-        # 5. GENERATE TTS AUDIO
-        # -----------------------------------------
-
-        print("\n[5/6] Generating narration...")
-
-        audio_files = create_audio(scene_json)
-
-
-        print(
-            f"Generated {len(audio_files)} audio files."
-        )
-
 
         # -----------------------------------------
         # 6. MERGE VIDEO + AUDIO

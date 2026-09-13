@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 
 from src.schemas.video_schema import VideoRequest
 from src.services.video_service import VideoService
-from src.routes.emotion_routes import pipeline
+from src.services.emotion_state import EmotionState
 
 
 router = APIRouter(
@@ -12,53 +12,98 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# GENERATE ADAPTIVE VIDEO
+# ============================================================
+
 @router.post("/generate")
 def generate_video(request: VideoRequest):
 
     try:
 
-        # ============================================
-        # GET LATEST EMOTION FROM EMOTION PIPELINE
-        # ============================================
+        # ====================================================
+        # GET EMOTION SNAPSHOT
+        # ====================================================
 
-        emotion = pipeline.last_overall_emotion
-        confidence = pipeline.last_overall_confidence
+        state = EmotionState.get()
 
-        # If emotion is not available yet
-        # use Neutral by default
+        emotion = state["emotion"]
+        confidence = float(
+            state["confidence"]
+        )
+
+        predictions_used = int(
+            state["predictions"]
+        )
+
+        # ----------------------------------------------------
+        # DEFAULT LEARNER STATE
+        # ----------------------------------------------------
+
+        # Before the first overall model prediction,
+        # the learner is treated as Neutral.
+        #
+        # Confidence remains 0 because there is no
+        # actual model prediction yet.
+
         if emotion is None:
+
             emotion = "Neutral"
-            confidence = 1.0
+            confidence = 0.0
+            predictions_used = 0
 
+        # ====================================================
+        # CREATE IMMUTABLE SNAPSHOT
+        # ====================================================
 
-        # ============================================
+        # From this point onward, this video-generation
+        # request uses this emotion value even if the
+        # live camera predicts another emotion while the
+        # video is being generated.
+
+        emotion_snapshot = emotion
+        confidence_snapshot = confidence
+
+        # ====================================================
         # LOG REQUEST
-        # ============================================
+        # ====================================================
 
         print("\n" + "=" * 60)
         print("VIDEO GENERATION REQUEST")
         print("=" * 60)
 
-        print(f"Query: {request.query}")
-        print(f"Emotion: {emotion}")
-        print(f"Emotion confidence: {confidence:.4f}")
+        print(
+            f"Query: {request.query}"
+        )
+
+        print(
+            f"Emotion: {emotion_snapshot}"
+        )
+
+        print(
+            f"Emotion confidence: "
+            f"{confidence_snapshot:.4f}"
+        )
+
+        print(
+            f"Predictions used: "
+            f"{predictions_used}"
+        )
 
         print("=" * 60)
 
-
-        # ============================================
+        # ====================================================
         # GENERATE VIDEO
-        # ============================================
+        # ====================================================
 
         video_path = VideoService.generate_video(
             query=request.query,
-            emotion=emotion
+            emotion=emotion_snapshot
         )
 
-
-        # ============================================
+        # ====================================================
         # RETURN VIDEO
-        # ============================================
+        # ====================================================
 
         return FileResponse(
             path=video_path,
@@ -66,13 +111,23 @@ def generate_video(request: VideoRequest):
             filename="adaptive_learning_video.mp4"
         )
 
+    # ========================================================
+    # HTTP ERROR
+    # ========================================================
 
     except HTTPException:
+
         raise
+
+    # ========================================================
+    # UNEXPECTED ERROR
+    # ========================================================
 
     except Exception as e:
 
-        print(f"Video generation error: {e}")
+        print(
+            f"Video generation error: {e}"
+        )
 
         raise HTTPException(
             status_code=500,
