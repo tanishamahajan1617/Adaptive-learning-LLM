@@ -1,178 +1,320 @@
-import os
+
+"""
+Direct LLM → Manim Python generator.
+
+Architecture:
+
+Lesson JSON
+    ↓
+Groq LLM
+    ↓
+Complete Manim Python code
+    ↓
+AST / safety validation
+    ↓
+generated_scene.py
+    ↓
+Manim render
+
+The LLM directly generates the Manim code.
+No visual-plan JSON.
+No deterministic object renderer.
+"""
+
 import ast
-import math
-import json
+import os
 import re
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
-from src.prompt.manim_prompt import MANIM_GENERATION_PROMPT
-
 
 # ============================================================
-# PATH / ENV
+# PATH / CONFIG
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-api_key = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not api_key:
-    raise ValueError(
-        f"GROQ_API_KEY not found. "
-        f"Please add GROQ_API_KEY to {BASE_DIR / '.env'}"
-    )
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY not found in .env")
 
 
-# ============================================================
-# LLM
-# ============================================================
+MODEL_NAME = "openai/gpt-oss-120b"
 
 llm = ChatGroq(
-    model="openai/gpt-oss-120b",
-    groq_api_key=api_key,
+    model=MODEL_NAME,
     temperature=0.1,
 )
 
 
-# ============================================================
-# CONFIG
-# ============================================================
-
-ALLOWED_ACTIONS = {
-    "Create",
-    "WriteText",
-    "FadeIn",
-    "FadeOut",
-    "Move",
-    "MoveToTarget",
-    "Transform",
-    "ReplacementTransform",
-    "Indicate",
-    "Highlight",
-    "Compare",
-    "Swap",
-    "Split",
-    "Merge",
-    "Connect",
-    "Disconnect",
-    "Remove",
-}
-
-
-FORBIDDEN_IMPORTS = {
-    "numpy",
-    "np",
-    "cv2",
-    "torch",
-    "tensorflow",
-    "pandas",
-    "scipy",
-    "requests",
-    "matplotlib",
-    "plotly",
-    "PIL",
-    "os",
-    "sys",
-    "subprocess",
-    "pathlib",
-    "json",
-    "re",
-    "math",
-}
-
-
-FORBIDDEN_NAMES = {
-    "Tex",
-    "MathTex",
-    "ImageMobject",
-    "SVGMobject",
-}
-
-
-FORBIDDEN_PATTERNS = [
-    ".normalize(",
-    "rotate_vector(",
-    "eval(",
-    "exec(",
-    "__import__(",
-    "open(",
-    "subprocess",
-]
-
-
-# Keep generated code reasonably compact.
-# This prevents a runaway LLM response from becoming a huge file.
-MAX_GENERATED_CODE_CHARS = 30000
+MAX_GENERATED_CODE_CHARS = 50000
 
 
 # ============================================================
-# HELPERS
+# MANIM GENERATION PROMPT
 # ============================================================
 
-def _is_close(a, b):
-    return math.isclose(
-        float(a),
-        float(b),
-        abs_tol=1e-6,
+MANIM_GENERATION_PROMPT = r"""
+You are an expert educational animation programmer using Manim Community Edition.
+
+Your task is to generate COMPLETE, EXECUTABLE Manim Python code for an educational
+video based on the lesson information provided below.
+
+IMPORTANT:
+
+You MUST generate Python code directly.
+
+Do NOT generate JSON.
+Do NOT generate a visual plan.
+Do NOT explain your answer.
+Do NOT wrap the code in markdown fences.
+Return ONLY the complete Python source code.
+
+============================================================
+OUTPUT REQUIREMENTS
+============================================================
+
+The output MUST:
+
+1. Start exactly with:
+
+from manim import *
+
+2. Define exactly one scene class:
+
+class GeneratedScene(Scene):
+
+3. Put all animation logic inside:
+
+def construct(self):
+
+4. The code must be directly executable with:
+
+manim generated_scene.py GeneratedScene
+
+5. Use actual Manim animations such as:
+
+self.play(Write(...))
+self.play(Create(...))
+self.play(FadeIn(...))
+self.play(FadeOut(...))
+self.play(Transform(...))
+self.play(Indicate(...))
+self.play(obj.animate.move_to(...))
+
+6. The video must contain meaningful visual explanations.
+
+7. Use simple Manim objects that work reliably:
+
+Text
+Rectangle
+RoundedRectangle
+Circle
+Dot
+Line
+Arrow
+VGroup
+SurroundingRectangle
+
+8. For mathematical expressions, prefer Text unless a simple mathematical
+expression can safely be represented otherwise.
+
+9. Do NOT use:
+
+Tex
+MathTex
+ImageMobject
+SVGMobject
+
+10. Do NOT use external files, external imports, network calls, shell commands,
+subprocesses, eval, exec, open, or arbitrary Python execution.
+
+11. Do NOT use:
+
+.normalize()
+rotate_vector()
+
+12. Do NOT use any imports except:
+
+from manim import *
+
+13. Keep the code concise and robust.
+
+14. Do not create helper classes.
+
+15. Do not create additional Scene classes.
+
+16. The class name MUST be exactly:
+
+GeneratedScene
+
+============================================================
+EDUCATIONAL VISUALIZATION RULES
+============================================================
+
+The animation should actually teach the concept.
+
+Do not merely display the narration as text.
+
+Use visual objects appropriate to the concept.
+
+Examples:
+
+For a stack:
+- represent elements as rectangles
+- arrange them vertically
+- show push/pop visually
+- use arrows or labels when useful
+
+For a queue:
+- represent elements horizontally
+- show enqueue/dequeue movement
+
+For a tree:
+- use circles for nodes
+- connect nodes using lines
+- animate traversal
+
+For an array:
+- use rectangles/cells
+- label elements
+- highlight indexes
+
+For sorting:
+- show elements as bars or boxes
+- animate swaps
+
+For algorithms:
+- show the important data structures
+- highlight the current operation
+- show transitions between states
+
+For OS concepts:
+- show processes, memory, CPU, files, etc. using simple shapes and labels.
+
+For networking:
+- show nodes and arrows representing communication.
+
+For ML concepts:
+- use simple boxes, arrows, labels, and graphs where appropriate.
+
+The exact visualization must depend on the lesson topic.
+
+============================================================
+TIMING
+============================================================
+
+The lesson contains scene and beat timing.
+
+Try to respect the provided beat durations.
+
+Use self.wait() when necessary so the scene approximately follows
+the supplied timing.
+
+Do not make animations excessively fast.
+
+============================================================
+MULTI-SCENE RULE
+============================================================
+
+The lesson may contain multiple scenes.
+
+Because Manim will render ONE GeneratedScene:
+
+- implement all lesson scenes sequentially inside construct()
+- after finishing a scene, use self.clear() before starting the next scene
+- do not create multiple Scene classes
+
+============================================================
+CODE QUALITY
+============================================================
+
+Prefer straightforward code such as:
+
+title = Text("...")
+self.play(Write(title))
+
+box = RoundedRectangle(...)
+box.move_to(...)
+self.play(Create(box))
+
+label = Text("...")
+label.move_to(box.get_center())
+self.play(Write(label))
+
+Use VGroup when grouping related objects.
+
+Keep object references in normal Python variables.
+
+Avoid unnecessarily complicated abstractions.
+
+Do not generate thousands of lines.
+
+============================================================
+LESSON INPUT
+============================================================
+
+Below is the lesson information.
+
+Generate the complete Manim Python source code based on it.
+
+__LESSON_JSON__
+
+============================================================
+FINAL INSTRUCTION
+============================================================
+
+Return ONLY Python code.
+
+The first line MUST be:
+
+from manim import *
+"""
+
+
+# ============================================================
+# BASIC HELPERS
+# ============================================================
+
+def _call_llm(prompt: str) -> str:
+    """Call Groq and return plain text."""
+
+    response = llm.invoke(prompt)
+
+    content = getattr(
+        response,
+        "content",
+        response,
     )
 
+    if isinstance(content, list):
+        content = "".join(
+            str(item)
+            for item in content
+        )
 
-def _extract_string_subscript(node):
+    return str(content).strip()
+
+
+def _clean_code(code: str) -> str:
     """
-    Extract:
-
-        objects["some_id"]
-
-    -> "some_id"
-
+    Remove accidental markdown fences or surrounding text.
     """
-    if not isinstance(node, ast.Subscript):
-        return None
-
-    slice_node = node.slice
-
-    if isinstance(slice_node, ast.Constant):
-        if isinstance(slice_node.value, str):
-            return slice_node.value
-
-    return None
-
-
-def _get_known_object_ids(scene_json):
-    known_ids = set()
-
-    for scene in scene_json.get("scenes", []):
-        for obj in scene.get("objects", []):
-            if not isinstance(obj, dict):
-                continue
-
-            object_id = obj.get("id")
-
-            if object_id:
-                known_ids.add(str(object_id))
-
-    return known_ids
-
-
-# ============================================================
-# CLEAN LLM OUTPUT
-# ============================================================
-
-def clean_generated_code(code: str) -> str:
 
     if not isinstance(code, str):
         raise ValueError(
-            "Manim generator returned non-string output."
+            "LLM response is not a string."
         )
 
     code = code.strip()
 
-    # Remove markdown fences if the model ignores the instruction.
+    # Remove markdown fences.
     code = re.sub(
         r"^```(?:python)?\s*",
         "",
@@ -184,534 +326,308 @@ def clean_generated_code(code: str) -> str:
         r"\s*```$",
         "",
         code,
-        flags=re.IGNORECASE,
     )
 
     code = code.strip()
 
-    # Remove accidental text before the Manim import.
-    manim_import = "from manim import *"
+    # If the model added text before the import,
+    # keep everything starting from the Manim import.
+    import_index = code.find("from manim import *")
 
-    import_position = code.find(manim_import)
-
-    if import_position > 0:
-        code = code[import_position:]
-
-    # If model returned "import manim" instead, leave validation
-    # to reject it rather than silently modifying it.
+    if import_index > 0:
+        code = code[import_index:]
 
     return code.strip()
 
 
 # ============================================================
-# VALIDATE VIDEO PLAN
+# LESSON PAYLOAD
 # ============================================================
 
-def validate_video_plan(scene_json: dict):
+def _build_llm_payload(video_plan: dict) -> dict:
+    """
+    Build a compact representation of the lesson.
 
-    if not isinstance(scene_json, dict):
-        raise ValueError(
-            "Scene JSON must be a dictionary."
-        )
+    We intentionally remove long narration text because narration is
+    already handled separately by TTS.
 
-    scenes = scene_json.get("scenes")
+    The LLM mainly needs:
+    - topic
+    - learning objective
+    - scene information
+    - visual descriptions
+    - beat actions
+    - timing
+    """
 
-    if not isinstance(scenes, list):
-        raise ValueError(
-            "Scene JSON must contain a 'scenes' list."
-        )
+    payload = {
+        "video_title": video_plan.get(
+            "video_title",
+            "",
+        ),
+        "subject": video_plan.get(
+            "subject",
+            "",
+        ),
+        "emotion": video_plan.get(
+            "emotion",
+            "",
+        ),
+        "learning_objective": video_plan.get(
+            "learning_objective",
+            "",
+        ),
+        "scenes": [],
+    }
 
-    if not scenes:
-        raise ValueError(
-            "Scene JSON contains no scenes."
-        )
+    for scene in video_plan.get(
+        "scenes",
+        [],
+    ):
 
-    for scene_index, scene in enumerate(scenes):
-
-        scene_number = scene_index + 1
-
-        if not isinstance(scene, dict):
-            raise ValueError(
-                f"Scene {scene_number} must be an object."
-            )
-
-        duration = scene.get(
-            "audio_duration",
-            scene.get("duration"),
-        )
-
-        if duration is None:
-            raise ValueError(
-                f"Scene {scene_number} is missing "
-                f"'audio_duration'."
-            )
-
-        try:
-            duration = float(duration)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"Scene {scene_number}: "
-                f"audio_duration must be numeric."
-            ) from exc
-
-        if duration <= 0:
-            raise ValueError(
-                f"Scene {scene_number}: "
-                f"audio_duration must be greater than 0."
-            )
-
-        scene["audio_duration"] = duration
+        scene_payload = {
+            "scene_id": scene.get(
+                "scene_id"
+            ),
+            "scene_title": scene.get(
+                "scene_title",
+                "",
+            ),
+            "learning_goal": scene.get(
+                "learning_goal",
+                "",
+            ),
+            "duration": scene.get(
+                "duration",
+                0,
+            ),
+            "visual_description": scene.get(
+                "visual_description",
+                "",
+            ),
+            "objects": [],
+            "beats": [],
+        }
 
         # ----------------------------------------------------
         # Objects
         # ----------------------------------------------------
 
-        objects = scene.get("objects", [])
-
-        if not isinstance(objects, list):
-            raise ValueError(
-                f"Scene {scene_number}: "
-                f"'objects' must be a list."
-            )
-
-        object_ids = set()
-
-        for obj_index, obj in enumerate(objects):
+        for obj in scene.get(
+            "objects",
+            [],
+        ):
 
             if not isinstance(obj, dict):
-                raise ValueError(
-                    f"Scene {scene_number}: "
-                    f"object {obj_index + 1} must be an object."
-                )
+                continue
 
-            object_id = str(
-                obj.get("id", "")
-            ).strip()
-
-            if not object_id:
-                raise ValueError(
-                    f"Scene {scene_number}: "
-                    f"object {obj_index + 1} has no id."
-                )
-
-            if object_id in object_ids:
-                raise ValueError(
-                    f"Scene {scene_number}: "
-                    f"duplicate object id '{object_id}'."
-                )
-
-            object_ids.add(object_id)
+            scene_payload["objects"].append({
+                "id": obj.get("id"),
+                "type": obj.get(
+                    "type",
+                    "",
+                ),
+                "label": obj.get(
+                    "label",
+                    "",
+                ),
+                "position": obj.get(
+                    "position",
+                    "center",
+                ),
+                "relative_to": obj.get(
+                    "relative_to"
+                ),
+            })
 
         # ----------------------------------------------------
         # Teaching beats
         # ----------------------------------------------------
 
-        beats = scene.get("teaching_beats")
-
-        if not isinstance(beats, list):
-            raise ValueError(
-                f"Scene {scene_number}: "
-                f"teaching_beats must be a list."
-            )
-
-        if not beats:
-            raise ValueError(
-                f"Scene {scene_number}: "
-                f"teaching_beats cannot be empty."
-            )
-
-        previous_end = 0.0
-        beat_ids = set()
-
-        for beat_index, beat in enumerate(beats):
-
-            beat_number = beat_index + 1
+        for index, beat in enumerate(
+            scene.get(
+                "teaching_beats",
+                [],
+            ),
+            start=1,
+        ):
 
             if not isinstance(beat, dict):
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number} must be an object."
+                continue
+
+            duration = float(
+                beat.get(
+                    "duration",
+                    0,
                 )
-
-            # ------------------------------------------------
-            # Beat ID
-            # ------------------------------------------------
-
-            beat_id = str(
-                beat.get("beat_id", "")
-            ).strip()
-
-            if not beat_id:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"beat_id is missing."
-                )
-
-            if beat_id in beat_ids:
-                raise ValueError(
-                    f"Scene {scene_number}: "
-                    f"duplicate beat_id '{beat_id}'."
-                )
-
-            beat_ids.add(beat_id)
-
-            # ------------------------------------------------
-            # Timing
-            # ------------------------------------------------
-
-            required_timing = [
-                "start_time",
-                "end_time",
-                "duration",
-            ]
-
-            missing = [
-                field
-                for field in required_timing
-                if field not in beat
-            ]
-
-            if missing:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"missing timing fields {missing}."
-                )
-
-            try:
-                start_time = float(
-                    beat["start_time"]
-                )
-
-                end_time = float(
-                    beat["end_time"]
-                )
-
-                beat_duration = float(
-                    beat["duration"]
-                )
-
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"timing values must be numeric."
-                ) from exc
-
-            if start_time < 0:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"start_time cannot be negative."
-                )
-
-            if end_time > duration + 1e-6:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"end_time {end_time} exceeds "
-                    f"scene duration {duration}."
-                )
-
-            if start_time >= end_time:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"start_time must be smaller than end_time."
-                )
-
-            expected_duration = (
-                end_time - start_time
+                or 0
             )
 
-            if not math.isclose(
-                beat_duration,
-                expected_duration,
-                abs_tol=0.01,
-            ):
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"duration does not match "
-                    f"start_time/end_time."
+            if not duration:
+
+                start = float(
+                    beat.get(
+                        "start_time",
+                        beat.get(
+                            "start_ratio",
+                            0,
+                        )
+                        * scene_payload["duration"],
+                    )
+                    or 0
                 )
 
-            if not math.isclose(
-                start_time,
-                previous_end,
-                abs_tol=0.01,
-            ):
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"timeline is not contiguous. "
-                    f"Expected {previous_end}, "
-                    f"got {start_time}."
+                end = float(
+                    beat.get(
+                        "end_time",
+                        beat.get(
+                            "end_ratio",
+                            1,
+                        )
+                        * scene_payload["duration"],
+                    )
+                    or 0
                 )
 
-            previous_end = end_time
-
-            # ------------------------------------------------
-            # Required semantic fields
-            # ------------------------------------------------
-
-            if "visual_action" not in beat:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"missing visual_action."
+                duration = max(
+                    0,
+                    end - start,
                 )
 
-            if "target" not in beat:
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"missing target."
-                )
+            animations = []
 
-            animations = beat.get("animations")
-
-            if not isinstance(animations, list):
-                raise ValueError(
-                    f"Scene {scene_number}, "
-                    f"Beat {beat_number}: "
-                    f"'animations' must be a list."
-                )
-
-            # ------------------------------------------------
-            # Animation validation
-            # ------------------------------------------------
-
-            for animation_index, animation in enumerate(
-                animations
+            for animation in beat.get(
+                "animations",
+                [],
             ):
 
-                if not isinstance(animation, dict):
-                    raise ValueError(
-                        f"Scene {scene_number}, "
-                        f"Beat {beat_number}, "
-                        f"Animation {animation_index + 1} "
-                        f"must be an object."
-                    )
+                if not isinstance(
+                    animation,
+                    dict,
+                ):
+                    continue
 
-                action = animation.get("action")
+                animations.append({
+                    "action": animation.get(
+                        "action"
+                    ),
+                    "target": animation.get(
+                        "target"
+                    ),
+                    "parameters": animation.get(
+                        "parameters",
+                        {},
+                    ),
+                })
 
-                if action not in ALLOWED_ACTIONS:
-                    raise ValueError(
-                        f"Scene {scene_number}, "
-                        f"Beat {beat_number}, "
-                        f"Animation {animation_index + 1}: "
-                        f"unsupported action '{action}'."
-                    )
+            scene_payload["beats"].append({
+                "beat_id": beat.get(
+                    "beat_id",
+                    f"scene_{scene_payload['scene_id']}_beat_{index}",
+                ),
+                "sequence": beat.get(
+                    "sequence",
+                    index,
+                ),
+                "visual_action": beat.get(
+                    "visual_action",
+                    "",
+                ),
+                "target": beat.get(
+                    "target",
+                    "",
+                ),
+                "duration": duration,
+                "animations": animations,
+            })
 
-                if "target" not in animation:
-                    raise ValueError(
-                        f"Scene {scene_number}, "
-                        f"Beat {beat_number}, "
-                        f"Animation {animation_index + 1}: "
-                        f"missing target."
-                    )
+        payload["scenes"].append(
+            scene_payload
+        )
 
-                if "parameters" not in animation:
-                    raise ValueError(
-                        f"Scene {scene_number}, "
-                        f"Beat {beat_number}, "
-                        f"Animation {animation_index + 1}: "
-                        f"missing parameters."
-                    )
+    return payload
 
-        # ----------------------------------------------------
-        # Full timeline coverage
-        # ----------------------------------------------------
 
-        if not _is_close(
-            previous_end,
-            duration,
+# ============================================================
+# LESSON VALIDATION
+# ============================================================
+
+def validate_video_plan(
+    video_plan: dict,
+) -> None:
+    """
+    Validate the lesson JSON before sending it to Groq.
+    """
+
+    if not isinstance(
+        video_plan,
+        dict,
+    ):
+        raise ValueError(
+            "Video plan must be a dictionary."
+        )
+
+    scenes = video_plan.get(
+        "scenes"
+    )
+
+    if not isinstance(
+        scenes,
+        list,
+    ) or not scenes:
+
+        raise ValueError(
+            "Video plan must contain at least one scene."
+        )
+
+    for index, scene in enumerate(
+        scenes,
+        start=1,
+    ):
+
+        if not isinstance(
+            scene,
+            dict,
         ):
             raise ValueError(
-                f"Scene {scene_number}: "
-                f"teaching beats do not cover "
-                f"the complete audio duration. "
-                f"Last beat ends at "
-                f"{previous_end:.3f}s, "
-                f"audio duration is "
-                f"{duration:.3f}s."
+                f"Scene {index} must be an object."
             )
 
+        scene_id = scene.get(
+            "scene_id"
+        )
 
-# ============================================================
-# COMPACT PAYLOAD
-# ============================================================
+        if scene_id is None:
+            raise ValueError(
+                f"Scene {index} is missing scene_id."
+            )
 
-def build_compact_payload(scene_json: dict) -> dict:
+        duration = float(
+            scene.get(
+                "duration",
+                0,
+            )
+            or 0
+        )
 
-    compact_scenes = []
+        if duration <= 0:
+            raise ValueError(
+                f"Scene {scene_id} has invalid duration."
+            )
 
-    for scene in scene_json["scenes"]:
-
-        compact_scene = {
-            "scene_id": scene.get("scene_id"),
-            "duration": scene.get(
-                "audio_duration",
-                scene.get("duration"),
-            ),
-            "camera": scene.get("camera", {}),
-            "objects": scene.get("objects", []),
-            "teaching_beats": [],
-        }
-
-        for beat in scene.get(
+        beats = scene.get(
             "teaching_beats",
             [],
-        ):
-
-            compact_beat = {
-                "beat_id": beat.get("beat_id"),
-                "sequence": beat.get("sequence"),
-                "visual_action": beat.get(
-                    "visual_action"
-                ),
-                "target": beat.get("target"),
-                "start_time": beat.get("start_time"),
-                "end_time": beat.get("end_time"),
-                "duration": beat.get("duration"),
-                "animations": beat.get(
-                    "animations",
-                    [],
-                ),
-            }
-
-            compact_scene["teaching_beats"].append(
-                compact_beat
-            )
-
-        compact_scenes.append(
-            compact_scene
         )
 
-    return {
-        "scenes": compact_scenes
-    }
-
-
-# ============================================================
-# OBJECT REGISTRY VALIDATION
-# ============================================================
-
-def validate_object_registry_usage(
-    tree,
-    known_object_ids=None,
-):
-    """
-    Validate registry usage without requiring every JSON object
-    to be registered.
-
-    Why?
-
-    Because objects are intentionally introduced only when their
-    teaching beat occurs.
-
-    Therefore, an object may legitimately appear later in code.
-    """
-
-    known_object_ids = set(
-        known_object_ids or []
-    )
-
-    registered_ids = set()
-
-    # --------------------------------------------------------
-    # Collect registry assignments
-    # --------------------------------------------------------
-
-    for node in ast.walk(tree):
-
-        if not isinstance(node, ast.Assign):
-            continue
-
-        for target in node.targets:
-
-            if not isinstance(
-                target,
-                ast.Subscript,
-            ):
-                continue
-
-            if not isinstance(
-                target.value,
-                ast.Name,
-            ):
-                continue
-
-            if target.value.id != "objects":
-                continue
-
-            object_id = _extract_string_subscript(
-                target
-            )
-
-            if object_id:
-                registered_ids.add(object_id)
-
-    # --------------------------------------------------------
-    # Detect standalone registry lookups
-    # --------------------------------------------------------
-
-    for node in ast.walk(tree):
-
-        if not isinstance(node, ast.Expr):
-            continue
-
-        value = node.value
-
         if not isinstance(
-            value,
-            ast.Subscript,
-        ):
-            continue
-
-        if not isinstance(
-            value.value,
-            ast.Name,
-        ):
-            continue
-
-        if value.value.id != "objects":
-            continue
-
-        object_id = _extract_string_subscript(
-            value
-        )
-
-        if object_id:
+            beats,
+            list,
+        ) or not beats:
 
             raise ValueError(
-                "Generated Manim code contains "
-                "a standalone registry lookup: "
-                f"objects[{object_id!r}]. "
-                "Use it inside a Manim operation."
+                f"Scene {scene_id} has no teaching beats."
             )
-
-    # --------------------------------------------------------
-    # Informational warning only
-    # --------------------------------------------------------
-
-    missing_registry = (
-        known_object_ids - registered_ids
-    )
-
-    if missing_registry:
-
-        print(
-            "INFO: Some lesson objects are not "
-            "registered yet in the generated code:"
-        )
-
-        for object_id in sorted(
-            missing_registry
-        ):
-            print(f"  - {object_id}")
 
 
 # ============================================================
@@ -720,52 +636,74 @@ def validate_object_registry_usage(
 
 def validate_generated_code(
     code: str,
-    known_object_ids=None,
-):
+) -> None:
+    """
+    Validate LLM-generated Manim Python.
 
-    if not isinstance(code, str):
+    This does NOT try to understand the animation.
+    It only checks that the generated code is structurally safe
+    and suitable for Manim execution.
+    """
+
+    if not isinstance(
+        code,
+        str,
+    ):
         raise ValueError(
             "Generated Manim code must be a string."
         )
 
-    if len(code) > MAX_GENERATED_CODE_CHARS:
-        raise ValueError(
-            "Generated Manim code is excessively large "
-            f"({len(code)} characters). "
-            "The generator should produce compact direct Manim code."
-        )
-
-    # --------------------------------------------------------
-    # First line
-    # --------------------------------------------------------
-
-    lines = code.splitlines()
-
-    if not lines:
+    if not code.strip():
         raise ValueError(
             "Generated Manim code is empty."
         )
 
+    if len(code) > MAX_GENERATED_CODE_CHARS:
+        raise ValueError(
+            "Generated Manim code is too large."
+        )
+
+    lines = code.strip().splitlines()
+
+    # --------------------------------------------------------
+    # Required import
+    # --------------------------------------------------------
+
     if lines[0].strip() != "from manim import *":
         raise ValueError(
-            "Generated Manim code must start exactly with "
+            "Generated code must start with "
             "'from manim import *'."
         )
 
     # --------------------------------------------------------
-    # Forbidden patterns
+    # Forbidden Python operations
     # --------------------------------------------------------
 
-    for pattern in FORBIDDEN_PATTERNS:
+    forbidden_patterns = [
+        "eval(",
+        "exec(",
+        "__import__(",
+        "open(",
+        "subprocess",
+        "os.system",
+        "os.popen",
+        "requests.",
+        "urllib.",
+        "socket.",
+        ".normalize(",
+        "rotate_vector(",
+    ]
+
+    for pattern in forbidden_patterns:
 
         if pattern in code:
             raise ValueError(
-                "Generated code contains "
-                f"forbidden pattern: {pattern}"
+                f"Generated code contains forbidden pattern: "
+                f"{pattern}"
             )
 
     # --------------------------------------------------------
-    # Parse Python
+    # Python syntax
     # --------------------------------------------------------
 
     try:
@@ -774,77 +712,67 @@ def validate_generated_code(
     except SyntaxError as exc:
 
         raise ValueError(
-            "Generated Manim code contains "
-            f"a Python syntax error: {exc}"
+            "Generated Manim code contains a Python "
+            f"syntax error: {exc}"
         ) from exc
 
     # --------------------------------------------------------
-    # Import validation
+    # Imports
     # --------------------------------------------------------
-
-    imported_modules = []
 
     for node in ast.walk(tree):
 
-        if isinstance(node, ast.Import):
+        if isinstance(
+            node,
+            ast.Import,
+        ):
 
             for alias in node.names:
-                imported_modules.append(
-                    alias.name
+
+                if alias.name != "manim":
+
+                    raise ValueError(
+                        f"Forbidden import: {alias.name}"
+                    )
+
+        elif isinstance(
+            node,
+            ast.ImportFrom,
+        ):
+
+            if node.module != "manim":
+
+                raise ValueError(
+                    f"Forbidden import from: "
+                    f"{node.module}"
                 )
 
-        elif isinstance(node, ast.ImportFrom):
-
-            if node.module:
-                imported_modules.append(
-                    node.module
-                )
-
-    for module in imported_modules:
-
-        root_module = module.split(".")[0]
-
-        if root_module != "manim":
-            raise ValueError(
-                "Generated code contains "
-                f"forbidden import: {module}"
-            )
-
     # --------------------------------------------------------
-    # Scene class validation
+    # Scene classes
     # --------------------------------------------------------
 
-    scene_classes = []
-
-    for node in ast.walk(tree):
-
-        if not isinstance(
+    scene_classes = [
+        node
+        for node in tree.body
+        if isinstance(
             node,
             ast.ClassDef,
-        ):
-            continue
-
-        inherits_scene = any(
-            isinstance(base, ast.Name)
-            and base.id == "Scene"
-            for base in node.bases
         )
-
-        if inherits_scene:
-            scene_classes.append(node)
+    ]
 
     if len(scene_classes) != 1:
+
         raise ValueError(
-            "Generated code must contain "
-            "exactly one Scene subclass."
+            "Generated code must contain exactly "
+            "one class."
         )
 
     scene_class = scene_classes[0]
 
     if scene_class.name != "GeneratedScene":
+
         raise ValueError(
-            "The Scene class must be "
-            "named 'GeneratedScene'."
+            "Scene class must be named GeneratedScene."
         )
 
     # --------------------------------------------------------
@@ -854,24 +782,26 @@ def validate_generated_code(
     construct_methods = [
         node
         for node in scene_class.body
-        if (
-            isinstance(node, ast.FunctionDef)
-            and node.name == "construct"
+        if isinstance(
+            node,
+            ast.FunctionDef,
         )
+        and node.name == "construct"
     ]
 
     if len(construct_methods) != 1:
+
         raise ValueError(
-            "GeneratedScene must contain "
-            "exactly one construct() method."
+            "GeneratedScene must contain exactly "
+            "one construct() method."
         )
 
     # --------------------------------------------------------
-    # No additional methods
+    # No extra methods
     # --------------------------------------------------------
 
     extra_methods = [
-        node
+        node.name
         for node in scene_class.body
         if isinstance(
             node,
@@ -884,393 +814,419 @@ def validate_generated_code(
     ]
 
     if extra_methods:
-        names = [
-            node.name
-            for node in extra_methods
-        ]
 
         raise ValueError(
-            "GeneratedScene must not contain "
-            f"additional helper methods: {names}"
+            f"Unexpected Scene methods: "
+            f"{extra_methods}"
         )
 
     # --------------------------------------------------------
     # Forbidden Manim classes
     # --------------------------------------------------------
 
-    for node in ast.walk(tree):
-
-        if (
-            isinstance(node, ast.Name)
-            and node.id in FORBIDDEN_NAMES
-        ):
-            raise ValueError(
-                "Generated code uses "
-                f"forbidden Manim object: {node.id}"
-            )
-
-    # --------------------------------------------------------
-    # Additional Scene subclasses
-    # --------------------------------------------------------
+    forbidden_names = {
+        "Tex",
+        "MathTex",
+        "ImageMobject",
+        "SVGMobject",
+    }
 
     for node in ast.walk(tree):
 
-        if (
-            isinstance(node, ast.ClassDef)
-            and node is not scene_class
+        if isinstance(
+            node,
+            ast.Name,
         ):
 
-            inherits_scene = any(
-                isinstance(base, ast.Name)
-                and base.id == "Scene"
-                for base in node.bases
-            )
+            if node.id in forbidden_names:
 
-            if inherits_scene:
                 raise ValueError(
-                    "Generated code contains "
-                    "more than one Scene subclass."
+                    f"Forbidden Manim object: "
+                    f"{node.id}"
+                )
+
+        if isinstance(
+            node,
+            ast.Attribute,
+        ):
+
+            if node.attr in forbidden_names:
+
+                raise ValueError(
+                    f"Forbidden Manim object: "
+                    f"{node.attr}"
                 )
 
     # --------------------------------------------------------
-    # Registry
+    # Require animation
     # --------------------------------------------------------
 
-    validate_object_registry_usage(
-        tree,
-        known_object_ids=known_object_ids,
+    play_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(
+            node,
+            ast.Call,
+        )
+        and isinstance(
+            node.func,
+            ast.Attribute,
+        )
+        and node.func.attr == "play"
+    ]
+
+    if not play_calls:
+
+        raise ValueError(
+            "Generated code contains no self.play() calls."
+        )
+
+    # --------------------------------------------------------
+    # Require construct to use self
+    # --------------------------------------------------------
+
+    construct = construct_methods[0]
+
+    has_self_play = False
+
+    for node in ast.walk(construct):
+
+        if isinstance(
+            node,
+            ast.Call,
+        ):
+
+            if (
+                isinstance(
+                    node.func,
+                    ast.Attribute,
+                )
+                and isinstance(
+                    node.func.value,
+                    ast.Name,
+                )
+                and node.func.value.id == "self"
+                and node.func.attr == "play"
+            ):
+                has_self_play = True
+                break
+
+    if not has_self_play:
+
+        raise ValueError(
+            "construct() does not contain "
+            "self.play()."
+        )
+
+    # --------------------------------------------------------
+    # run_time validation
+    # --------------------------------------------------------
+
+    for node in play_calls:
+
+        for keyword in node.keywords:
+
+            if keyword.arg != "run_time":
+                continue
+
+            if isinstance(
+                keyword.value,
+                ast.Constant,
+            ):
+
+                try:
+                    value = float(
+                        keyword.value.value
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+
+                    continue
+
+                if value <= 0:
+
+                    raise ValueError(
+                        "self.play() contains "
+                        "invalid run_time."
+                    )
+
+
+# ============================================================
+# DIRECT MANIM GENERATION
+# ============================================================
+
+def _generate_direct_manim_code(
+    video_plan: dict,
+) -> str:
+    """
+    Ask Groq to directly generate complete Manim Python.
+    """
+
+    payload = _build_llm_payload(
+        video_plan
     )
 
-    return True
+    payload_text = str(
+        payload
+    )
 
+    prompt = MANIM_GENERATION_PROMPT.replace(
+        "__LESSON_JSON__",
+        payload_text,
+    )
 
-# ============================================================
-# REPAIR PROMPT
-# ============================================================
+    print(
+        "Calling Groq for direct Manim code..."
+    )
 
-def build_repair_prompt(
-    code: str,
-    error_message: str,
-) -> str:
+    raw_response = _call_llm(
+        prompt
+    )
 
-    return f"""
-You generated invalid Manim Community Edition Python code.
+    print(
+        "Cleaning generated Manim code..."
+    )
 
-Validation error:
-
-{error_message}
-
-Fix ONLY the problem that caused the validation failure.
-
-Return ONLY the COMPLETE corrected Python file.
-
-==================================================
-STRICT REQUIREMENTS
-==================================================
-
-First line:
-
-from manim import *
-
-Exactly one class:
-
-class GeneratedScene(Scene):
-
-Exactly one method:
-
-def construct(self):
-
-No other Scene subclass.
-
-No helper classes.
-
-No helper methods.
-
-No generic rendering framework.
-
-No object factory.
-
-No animation engine.
-
-No definitions dictionary.
-
-No imports other than:
-
-from manim import *
-
-Do not use:
-
-Tex
-MathTex
-ImageMobject
-SVGMobject
-eval
-exec
-open
-__import__
-
-Do not use filesystem operations.
-
-Do not use external libraries.
-
-Do not add decorative objects.
-
-Do not change the teaching sequence.
-
-Do not remove teaching beats.
-
-Do not create future objects early.
-
-Maintain persistent object registry:
-
-objects = {{}}
-
-Correct:
-
-box = Rectangle(...)
-objects["box"] = box
-
-Then:
-
-self.play(Create(objects["box"]))
-
-Never write:
-
-objects["box"]
-
-as a standalone statement.
-
-All parentheses, brackets, braces and strings MUST be closed.
-
-Keep the code compact.
-
-Do NOT truncate the response.
-
-Return COMPLETE Python code only.
-
-==================================================
-INVALID CODE
-==================================================
-
-{code}
-
-==================================================
-END INVALID CODE
-==================================================
-"""
-
-
-# ============================================================
-# CALL LLM
-# ============================================================
-
-def _call_llm(prompt: str) -> str:
-
-    response = llm.invoke(prompt)
-
-    code = response.content
-
-    if not isinstance(code, str):
-        raise ValueError(
-            "Groq returned non-string Manim code."
-        )
+    code = _clean_code(
+        raw_response
+    )
 
     return code
 
 
 # ============================================================
-# GENERATE MANIM CODE
+# CODE REPAIR
 # ============================================================
 
-def generate_manim_code(scene_json: dict) -> str:
+def _repair_generated_code(
+    video_plan: dict,
+    invalid_code: str,
+    error: Exception,
+) -> str:
+    """
+    Ask Groq to repair its previously generated Python code.
+    """
 
-    # --------------------------------------------------------
-    # 1. Validate lesson JSON
-    # --------------------------------------------------------
-
-    print("Validating scene plan...")
-
-    validate_video_plan(scene_json)
-
-    # --------------------------------------------------------
-    # 2. Compact payload
-    # --------------------------------------------------------
-
-    print("Building compact Manim payload...")
-
-    compact_payload = build_compact_payload(
-        scene_json
+    payload = _build_llm_payload(
+        video_plan
     )
 
-    scene_json_text = json.dumps(
-        compact_payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    repair_prompt = f"""
+You are repairing a Manim Python program.
 
-    # --------------------------------------------------------
-    # 3. Build prompt
-    # --------------------------------------------------------
+Return ONLY the complete corrected Python source code.
 
-    prompt = MANIM_GENERATION_PROMPT.replace(
-        "__SCENE_JSON__",
-        scene_json_text,
-    )
+Do NOT return JSON.
+Do NOT explain anything.
+Do NOT use markdown fences.
 
-    # --------------------------------------------------------
-    # 4. First generation
-    # --------------------------------------------------------
+The code must start exactly with:
 
-    print("Calling Groq Manim generator...")
+from manim import *
 
-    raw_code = _call_llm(prompt)
+The code must contain exactly:
 
-    raw_response_path = (
-        BASE_DIR / "raw_manim_response.txt"
-    )
+class GeneratedScene(Scene):
 
-    with open(
-        raw_response_path,
-        "w",
-        encoding="utf-8",
-    ) as file:
-        file.write(raw_code)
+with exactly one construct() method.
+
+The program must be executable with:
+
+manim generated_scene.py GeneratedScene
+
+The previous generated code was:
+
+{invalid_code[:30000]}
+
+The validation error was:
+
+{str(error)}
+
+The lesson information is:
+
+{payload}
+
+Fix the code while preserving the educational meaning.
+
+IMPORTANT:
+
+- Use only `from manim import *`
+- No external imports
+- No Tex
+- No MathTex
+- No ImageMobject
+- No SVGMobject
+- No eval
+- No exec
+- No open
+- No subprocess
+- No network calls
+- No shell commands
+- No `.normalize()`
+- No `rotate_vector()`
+- Include actual `self.play(...)` calls
+- Keep the implementation concise
+- If there are multiple scenes, implement them sequentially inside construct()
+- Use `self.clear()` between scenes
+- Return ONLY Python code
+
+Previous code:
+
+{invalid_code[:30000]}
+"""
 
     print(
-        f"Raw Manim response saved to: "
-        f"{raw_response_path}"
+        "Asking Groq to repair generated Manim code..."
     )
 
-    code = clean_generated_code(
-        raw_code
-    )
-
-    # --------------------------------------------------------
-    # 5. Validate first generation
-    # --------------------------------------------------------
-
-    known_object_ids = _get_known_object_ids(
-        compact_payload
-    )
-
-    print("Validating generated Manim code...")
-
-    try:
-
-        validate_generated_code(
-            code,
-            known_object_ids=known_object_ids,
-        )
-
-        print(
-            "Generated Manim code passed validation."
-        )
-
-        return code
-
-    except ValueError as first_error:
-
-        error_message = str(first_error)
-
-        print(
-            "\nGenerated code failed validation:"
-        )
-        print(error_message)
-
-    # --------------------------------------------------------
-    # 6. Automatic repair
-    # --------------------------------------------------------
-
-    print(
-        "\nAttempting automatic Manim code repair..."
-    )
-
-    repair_prompt = build_repair_prompt(
-        code=code,
-        error_message=error_message,
-    )
-
-    repaired_raw_code = _call_llm(
+    repaired_response = _call_llm(
         repair_prompt
     )
 
-    repaired_code = clean_generated_code(
-        repaired_raw_code
-    )
-
-    # --------------------------------------------------------
-    # 7. Validate repaired code
-    # --------------------------------------------------------
-
-    print(
-        "Validating repaired Manim code..."
-    )
-
-    validate_generated_code(
-        repaired_code,
-        known_object_ids=known_object_ids,
-    )
-
-    # --------------------------------------------------------
-    # 8. Save repaired response
-    # --------------------------------------------------------
-
-    repaired_path = (
-        BASE_DIR
-        / "repaired_manim_response.txt"
-    )
-
-    with open(
-        repaired_path,
-        "w",
-        encoding="utf-8",
-    ) as file:
-        file.write(repaired_code)
-
-    print(
-        f"Repaired Manim code saved to: "
-        f"{repaired_path}"
-    )
-
-    print(
-        "Repaired Manim code passed validation."
+    repaired_code = _clean_code(
+        repaired_response
     )
 
     return repaired_code
 
 
 # ============================================================
-# SAVE MANIM CODE
+# PUBLIC API
+# ============================================================
+
+def generate_manim_code(
+    video_plan: dict,
+) -> str:
+    """
+    Public entry point used by VideoService.
+    """
+
+    print(
+        "Validating lesson plan..."
+    )
+
+    validate_video_plan(
+        video_plan
+    )
+
+    # --------------------------------------------------------
+    # First generation attempt
+    # --------------------------------------------------------
+
+    print(
+        "Generating Manim code directly with Groq..."
+    )
+
+    code = _generate_direct_manim_code(
+        video_plan
+    )
+
+    # --------------------------------------------------------
+    # First validation
+    # --------------------------------------------------------
+
+    try:
+
+        print(
+            "Validating generated Manim code..."
+        )
+
+        validate_generated_code(
+            code
+        )
+
+    except Exception as first_error:
+
+        print(
+            "Generated code failed validation:"
+        )
+
+        print(
+            first_error
+        )
+
+        # ----------------------------------------------------
+        # Repair
+        # ----------------------------------------------------
+
+        try:
+
+            code = _repair_generated_code(
+                video_plan,
+                code,
+                first_error,
+            )
+
+            print(
+                "Validating repaired Manim code..."
+            )
+
+            validate_generated_code(
+                code
+            )
+
+        except Exception as repair_error:
+
+            raise RuntimeError(
+                "Groq failed to generate valid Manim code.\n"
+                f"Original error: {first_error}\n"
+                f"Repair error: {repair_error}"
+            ) from repair_error
+
+    print(
+        "Generated Manim code passed validation."
+    )
+
+    return code
+
+
+# ============================================================
+# SAVE
 # ============================================================
 
 def save_manim_code(
     code: str,
     output_path: str,
-):
+) -> None:
 
-    output_file = os.path.abspath(
+    path = Path(
         output_path
     )
 
-    output_directory = os.path.dirname(
-        output_file
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-    if output_directory:
-        os.makedirs(
-            output_directory,
-            exist_ok=True,
-        )
-
-    with open(
-        output_file,
-        "w",
+    path.write_text(
+        code,
         encoding="utf-8",
-    ) as file:
-
-        file.write(code)
+    )
 
     print(
-        "Manim code saved to: "
-        f"{output_file}"
+        f"Manim code saved: {path}"
     )
+
+
+# ============================================================
+# COMPATIBILITY HELPER
+# ============================================================
+
+def clean_generated_code(
+    code: str,
+) -> str:
+    """
+    Compatibility helper for VideoService.
+
+    VideoService already calls this function,
+    so we keep it even though the generator itself
+    also cleans the LLM response.
+    """
+
+    return _clean_code(
+        code
+    )
+

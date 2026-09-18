@@ -2,6 +2,8 @@
 import os
 import json
 import math
+import time
+import hashlib
 
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -29,6 +31,35 @@ if not api_key:
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash",
     google_api_key=api_key,
+)
+
+
+# ============================================================
+# GENERATION SETTINGS
+# ============================================================
+
+# Maximum amount of retrieved textbook context sent to Gemini.
+# Chunks are kept whole; no chunk is truncated in the middle.
+MAX_CONTEXT_CHARS = 16000
+
+# Retry only temporary Gemini availability failures.
+MAX_GEMINI_RETRIES = 3
+GEMINI_RETRY_DELAYS = (5, 10, 20)
+
+
+# ============================================================
+# SCRIPT CACHE
+# ============================================================
+
+SCRIPT_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "cache",
+    "video_scripts",
+)
+
+os.makedirs(
+    SCRIPT_CACHE_DIR,
+    exist_ok=True,
 )
 
 
@@ -435,6 +466,118 @@ Retrieved Knowledge:
 
 
 # ============================================================
+# SCRIPT CACHE HELPERS
+# ============================================================
+
+def get_script_cache_path(prompt: str):
+    """
+    Create a deterministic cache filename from the complete
+    Gemini prompt.
+
+    The complete prompt is used so cache entries automatically
+    differ when:
+        - query changes
+        - emotion changes
+        - retrieved context changes
+        - prompt rules change
+    """
+
+    cache_key = hashlib.sha256(
+        prompt.encode("utf-8")
+    ).hexdigest()
+
+    return os.path.join(
+        SCRIPT_CACHE_DIR,
+        f"{cache_key}.json",
+    )
+
+
+def load_cached_script(prompt: str):
+    """
+    Return a previously generated and validated script,
+    or None if no cache exists.
+    """
+
+    cache_path = get_script_cache_path(prompt)
+
+    if not os.path.exists(cache_path):
+        return None
+
+    try:
+        with open(
+            cache_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            cached_script = json.load(file)
+
+        # Validate cached data too.
+        validate_video_script(
+            cached_script
+        )
+
+        print(
+            "\n" + "=" * 60
+        )
+        print(
+            "VIDEO SCRIPT CACHE HIT"
+        )
+        print(
+            f"Cache: {cache_path}"
+        )
+        print(
+            "Gemini request skipped."
+        )
+        print(
+            "=" * 60
+        )
+
+        return cached_script
+
+    except Exception as exc:
+
+        print(
+            f"Invalid script cache found. "
+            f"Regenerating with Gemini. "
+            f"Reason: {exc}"
+        )
+
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
+
+        return None
+
+
+def save_cached_script(
+    prompt: str,
+    script: dict,
+):
+    """
+    Save a validated Gemini script to the local cache.
+    """
+
+    cache_path = get_script_cache_path(prompt)
+
+    with open(
+        cache_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            script,
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    print(
+        f"Video script cached: {cache_path}"
+    )
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 
@@ -784,6 +927,7 @@ def generate_video_script(
     # ========================================================
 
     context_parts = []
+    context_chars = 0
 
     for chunk in retrieved_chunks:
 
@@ -795,13 +939,36 @@ def generate_video_script(
         else:
             content = str(chunk)
 
-        if content:
-            context_parts.append(
-                content
-            )
+        content = str(content).strip()
 
-    context = "\n\n".join(
-        context_parts
+        if not content:
+            continue
+
+        # Keep complete retrieved chunks. Never cut a textbook chunk
+        # in the middle because the planner must reason over intact content.
+        separator_chars = 2 if context_parts else 0
+        projected_size = (
+            context_chars
+            + separator_chars
+            + len(content)
+        )
+
+        if projected_size > MAX_CONTEXT_CHARS:
+            break
+
+        context_parts.append(content)
+        context_chars = projected_size
+
+    context = "\n\n".join(context_parts)
+
+    if not context:
+        raise ValueError(
+            "No retrieved knowledge was available for video script generation."
+        )
+
+    print(
+        f"Retrieved context: {len(context_parts)} chunks, "
+        f"{len(context)} characters"
     )
 
     # ========================================================
@@ -832,6 +999,17 @@ def generate_video_script(
     )
 
     # ========================================================
+    # CACHE CHECK
+    # ========================================================
+
+    cached_script = load_cached_script(
+        prompt
+    )
+
+    if cached_script is not None:
+        return cached_script
+
+    # ========================================================
     # DEBUG
     # ========================================================
 
@@ -839,13 +1017,65 @@ def generate_video_script(
         f"Prompt length: {len(prompt)} characters"
     )
 
+    print(
+        f"Context limit: {MAX_CONTEXT_CHARS} characters"
+    )
+
+    print(
+        "No cached script found."
+    )
+
+    print(
+        "Calling Gemini..."
+    )
+
     # ========================================================
     # GEMINI
     # ========================================================
 
-    response = llm.invoke(
-        prompt
-    )
+    response = None
+    last_error = None
+
+    for attempt in range(MAX_GEMINI_RETRIES):
+        try:
+            response = llm.invoke(prompt)
+            break
+
+        except Exception as exc:
+            last_error = exc
+            error_text = str(exc)
+
+            # Retry only temporary availability failures.
+            # Quota/authentication/invalid-request errors are not retried.
+            is_transient_503 = (
+                "503" in error_text
+                or "UNAVAILABLE" in error_text
+                or "high demand" in error_text.lower()
+                or "temporarily unavailable" in error_text.lower()
+            )
+
+            if not is_transient_503:
+                raise
+
+            if attempt == MAX_GEMINI_RETRIES - 1:
+                raise
+
+            delay = GEMINI_RETRY_DELAYS[
+                min(attempt, len(GEMINI_RETRY_DELAYS) - 1)
+            ]
+
+            print(
+                f"Gemini temporarily unavailable "
+                f"(attempt {attempt + 1}/{MAX_GEMINI_RETRIES}). "
+                f"Retrying in {delay}s..."
+            )
+
+            time.sleep(delay)
+
+    if response is None:
+        raise RuntimeError(
+            "Gemini did not return a response."
+        ) from last_error
 
     raw_content = response.content
 
@@ -951,15 +1181,14 @@ def generate_video_script(
         result
     )
 
+    # ========================================================
+    # SAVE TO CACHE
+    # ========================================================
+
+    save_cached_script(
+        prompt,
+        result,
+    )
+
     return result
 
-
-# ============================================================
-# TEST
-# ============================================================
-
-if __name__ == "__main__":
-
-    print(
-        "script_generator.py loaded successfully."
-    )

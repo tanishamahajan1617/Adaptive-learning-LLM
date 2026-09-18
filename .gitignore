@@ -165,3 +165,10 @@ raw_manim_response.txt
 raw_script_response.txt
 repaired_script_response.txt
 repaired_manim_response.txt
+
+
+
+# ============================================================
+# CHACHE
+# ============================================================  
+src/cache/
