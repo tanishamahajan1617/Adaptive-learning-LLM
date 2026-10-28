@@ -2,104 +2,104 @@ from manim import *
 
 class GeneratedScene(Scene):
     def construct(self):
-        # ---------- Scene 1: Tree Structure ----------
-        # Create root node A
-        root_circle = Circle(radius=0.5, color=WHITE, fill_opacity=0.5).move_to([0, 3, 0])
-        root_label = Text("Root (A)", font_size=24).move_to(root_circle.get_center())
-        root_node = VGroup(root_circle, root_label)
+        # ==================== Scene 1: Node Structure ====================
+        # Node rectangle with label
+        node_rect = RoundedRectangle(width=2, height=1, color=WHITE)
+        node_rect.move_to(ORIGIN)
+        node_label = Text("Node")
+        node_label.move_to(node_rect.get_center())
+        node = VGroup(node_rect, node_label)
 
-        self.play(Create(root_circle, run_time=1.0), Write(root_label, run_time=1.0))
-        self.wait(2.774)  # beat duration 3.774 - animation time
+        # Info text above the node
+        info = Text("info: 8")
+        info.move_to(node_rect.get_top() + UP * 0.5)
 
-        # Create child nodes B and C
-        b_circle = Circle(radius=0.5, color=WHITE, fill_opacity=0.5).move_to([-2, 1, 0])
-        b_label = Text("B", font_size=24).move_to(b_circle.get_center())
-        child_b = VGroup(b_circle, b_label)
+        # Next pointer arrow to the right
+        next_arrow = Arrow(start=node_rect.get_right(), end=node_rect.get_right() + RIGHT * 1.5, buff=0)
+        next_label = Text("next")
+        next_label.scale(0.5)
+        next_label.next_to(next_arrow, UP)
 
-        c_circle = Circle(radius=0.5, color=WHITE, fill_opacity=0.5).move_to([2, 1, 0])
-        c_label = Text("C (Leaf)", font_size=24).move_to(c_circle.get_center())
-        child_c = VGroup(c_circle, c_label)
+        # Beat 1: display node, info, and next pointer
+        self.play(Create(node))
+        self.play(Write(info))
+        self.play(Create(next_arrow), Write(next_label))
+        self.wait(7.849)
 
-        self.play(Create(b_circle, run_time=0.5), Write(b_label, run_time=0.5))
-        self.play(Create(c_circle, run_time=0.5), Write(c_label, run_time=0.5))
+        # Beat 2: highlight the next pointer
+        self.play(Indicate(next_arrow))
+        self.wait(7.848)
 
-        # Connect arcs A-B and A-C
-        edge_ab = Line(start=root_circle.get_center(), end=b_circle.get_center(), color=GRAY)
-        edge_ac = Line(start=root_circle.get_center(), end=c_circle.get_center(), color=GRAY)
+        # Prev pointer arrow to the left (added later)
+        prev_arrow = Arrow(start=node_rect.get_left(), end=node_rect.get_left() + LEFT * 1.5, buff=0)
+        prev_label = Text("prev")
+        prev_label.scale(0.5)
+        prev_label.next_to(prev_arrow, UP)
 
-        self.play(Create(edge_ab), Create(edge_ac))
-        self.wait(3.774 - (0.5+0.5+0.5+0.5+1.0))  # remaining time of beat 2
+        # Beat 3: add the prev pointer
+        self.play(Create(prev_arrow), Write(prev_label))
+        self.wait(8.087)
 
-        # Highlight root and write description
-        self.play(Indicate(root_node, color=YELLOW))
-        label_root = Text("Root: Top node (no parent)", font_size=24).move_to([0, 3.8, 0])
-        self.play(Write(label_root, run_time=0.8))
-        self.wait(3.774 - 0.8)  # remaining of beat 3
-
-        # Add leaf node D under B
-        d_circle = Circle(radius=0.5, color=WHITE, fill_opacity=0.5).move_to([-2, -1, 0])
-        d_label = Text("D (Leaf)", font_size=24).move_to(d_circle.get_center())
-        leaf_d = VGroup(d_circle, d_label)
-
-        self.play(Create(d_circle, run_time=0.5), Write(d_label, run_time=0.5))
-
-        # Connect B-D
-        edge_bd = Line(start=b_circle.get_center(), end=d_circle.get_center(), color=GRAY)
-        self.play(Create(edge_bd))
-
-        # Highlight leaf nodes C and D in green
-        self.play(Indicate(child_c, color=GREEN), Indicate(leaf_d, color=GREEN))
-
-        # Write leaf description
-        label_leaf = Text("Leaves: Terminal nodes (no children)", font_size=24).move_to([0, -2.2, 0])
-        self.play(Write(label_leaf, run_time=0.8))
-        self.wait(3.774 - 0.8)  # remaining of beat 4
-
-        # Pause before next scene
-        self.wait(1)
+        # Clear scene before next part
         self.clear()
+        self.wait(1)
 
-        # ---------- Scene 2: Paths, Levels, and Height ----------
-        # Create nodes A, B, C in a vertical line
-        a_circle = Circle(radius=0.4, color=WHITE, fill_opacity=0.5).move_to([-1, 2, 0])
-        a_label = Text("A (Root)", font_size=24).move_to(a_circle.get_center())
-        node_a = VGroup(a_circle, a_label)
+        # ==================== Scene 2: Doubly Linked List Operations ====================
+        # Old tail node (value 8)
+        old_rect = RoundedRectangle(width=2, height=1, color=WHITE)
+        old_rect.move_to([-2, 0, 0])
+        old_label = Text("Node (8)")
+        old_label.move_to(old_rect.get_center())
+        old_node = VGroup(old_rect, old_label)
 
-        b_circle = Circle(radius=0.4, color=WHITE, fill_opacity=0.5).move_to([-1, 0, 0])
-        b_label = Text("B", font_size=24).move_to(b_circle.get_center())
-        node_b = VGroup(b_circle, b_label)
+        # Tail pointer above old node
+        tail_arrow = Arrow(start=old_rect.get_top() + UP * 0.5, end=old_rect.get_top(), buff=0)
+        tail_label = Text("tail")
+        tail_label.scale(0.5)
+        tail_label.next_to(tail_arrow, UP)
 
-        c_circle = Circle(radius=0.4, color=WHITE, fill_opacity=0.5).move_to([-1, -2, 0])
-        c_label = Text("C", font_size=24).move_to(c_circle.get_center())
-        node_c = VGroup(c_circle, c_label)
+        # New tail node (value 10)
+        new_rect = RoundedRectangle(width=2, height=1, color=WHITE)
+        new_rect.move_to([2, 0, 0])
+        new_label = Text("Node (10)")
+        new_label.move_to(new_rect.get_center())
+        new_node = VGroup(new_rect, new_label)
 
-        self.play(Create(a_circle, run_time=0.4), Write(a_label, run_time=0.4))
-        self.play(Create(b_circle, run_time=0.4), Write(b_label, run_time=0.4))
-        self.play(Create(c_circle, run_time=0.4), Write(c_label, run_time=0.4))
+        # Prev connection from new node to old node
+        prev_conn = Arrow(start=new_rect.get_left(), end=old_rect.get_right(), buff=0)
+        prev_conn_label = Text("prev")
+        prev_conn_label.scale(0.5)
+        prev_conn_label.next_to(prev_conn, UP)
 
-        # Connect arcs A-B and B-C
-        edge_ab2 = Line(start=a_circle.get_center(), end=b_circle.get_center(), color=GRAY)
-        edge_bc2 = Line(start=b_circle.get_center(), end=c_circle.get_center(), color=GRAY)
+        # Beat 1: create old node, tail pointer, new node, and prev connection
+        self.play(Create(old_node))
+        self.play(Create(tail_arrow), Write(tail_label))
+        self.play(Create(new_node))
+        self.play(Create(prev_conn), Write(prev_conn_label))
+        self.wait(9.526)
 
-        self.play(Create(edge_ab2), Create(edge_bc2))
+        # Next connection from old node to new node
+        next_conn = Arrow(start=old_rect.get_right(), end=new_rect.get_left(), buff=0)
+        next_conn_label = Text("next")
+        next_conn_label.scale(0.5)
+        next_conn_label.next_to(next_conn, UP)
 
-        # Indicate node C (deepest node)
-        self.play(Indicate(node_c, color=ORANGE))
-        self.wait(4.738 - (0.4+0.4+0.4+1.0))  # remaining of beat 1
+        # Beat 2: move tail pointer to new node and create next connection
+        self.play(
+            tail_arrow.animate.move_to(new_rect.get_top() + UP * 0.5),
+            tail_label.animate.move_to(tail_arrow.get_top() + UP * 0.2)
+        )
+        self.play(Create(next_conn), Write(next_conn_label))
+        self.wait(9.525)
 
-        # Write level texts
-        level1_text = Text("Level 1 (Root)", font_size=24).move_to([2, 2, 0])
-        level2_text = Text("Level 2 (1 arc + 1)", font_size=24).move_to([2, 0, 0])
-        level3_text = Text("Level 3 (2 arcs + 1) -> Height = 3", font_size=24).move_to([2, -2, 0])
+        # Complexity label
+        complexity = Text("Time Complexity: O(1)")
+        complexity.move_to([0, -2.5, 0])
 
-        self.play(Write(level1_text, run_time=0.5))
-        self.play(Write(level2_text, run_time=0.5))
-        self.play(Write(level3_text, run_time=0.5))
-        self.wait(4.737 - 1.5)  # remaining of beat 2
+        # Beat 3: display complexity text
+        self.play(Write(complexity))
+        self.wait(6.351)
 
-        # Highlight Level 3 text to indicate height
-        self.play(Indicate(level3_text, color=YELLOW))
-        self.wait(4.061 - 1.0)  # remaining of beat 3
-
-        # End of video
-        self.wait(2)
+        # Beat 4: indicate the tail pointer
+        self.play(Indicate(tail_arrow))
+        self.wait(6.35)

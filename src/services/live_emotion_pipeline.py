@@ -371,11 +371,13 @@ class LiveEmotionPipeline:
 
         print("\nInitializing Pupil Calibrator...")
 
+        
         self.pupil_calibrator = PupilCalibrator(
-            calibration_duration=0.0,
-            min_samples=3,
-            max_calibration_duration=5.0
-        )
+                calibration_duration=3.0,
+                min_samples=3,
+                max_calibration_duration=15.0
+            )
+
 
         print(
             "Pupil Calibrator initialized."
@@ -589,96 +591,54 @@ class LiveEmotionPipeline:
             self.start_pupil_calibration()
 
             self.auto_calibration_started = True
-
+    
     # ========================================================
     # UPDATE CALIBRATION
     # ========================================================
 
-    def update_pupil_calibration(
-        self,
-        pupil_size
-    ):
-
+    def update_pupil_calibration(self, pupil_size):
         calibrator = self.pupil_calibrator
+        was_calibrating = calibrator.is_calibrating
 
-        was_calibrating = (
-            calibrator.is_calibrating
-        )
+        if was_calibrating and pupil_size is not None:
+            accepted = calibrator.add_sample(pupil_size)
 
-        # ----------------------------------------------------
-        # ADD VALID SAMPLE
-        # ----------------------------------------------------
+            if not accepted:
+                print(f"[PUPIL DEBUG] Sample rejected: {pupil_size}")
 
-        if (
-            calibrator.is_calibrating
-            and pupil_size is not None
-        ):
+        elif was_calibrating:
+            print("[PUPIL DEBUG] No valid pupil measurement")
 
-            calibrator.add_sample(
-                pupil_size
-            )
+        calibrator.update()
 
-        # ----------------------------------------------------
-        # UPDATE TIMER
-        # ----------------------------------------------------
-
-        calibration_finished = (
-            calibrator.update()
-        )
-
-        # ----------------------------------------------------
-        # JUST FINISHED
-        # ----------------------------------------------------
-
-        if (
-            was_calibrating
-            and calibration_finished
-            and not calibrator.is_calibrating
-        ):
-
+        if was_calibrating and not calibrator.is_calibrating:
             if calibrator.is_calibrated:
-
-                print(
-                    "\nPupil calibration successful."
-                )
-
-                # Start completely fresh
-                # emotion collection.
+                print("\nPupil calibration successful.")
 
                 self.emotion_service.buffer.clear()
-
                 self.emotion_service.window_predictions.clear()
-
                 self.emotion_service.window_start = None
 
                 self.last_overall_emotion = None
-
                 self.last_overall_confidence = 0.0
-
                 self.last_overall_predictions = 0
 
                 EmotionState.reset()
 
                 self.popup_emotion_consumed = False
-
                 self.popup_emotion = None
-
                 self.popup_confidence = 0.0
 
-                print(
-                    "Emotion collection started."
-                )
+                print("Emotion collection started.")
 
             else:
+                print("\nPupil calibration failed.")
 
-                print(
-                    "\nPupil calibration failed."
-                )
+                status = calibrator.get_status()
+                print(status.get("message", "Unknown calibration error."))
 
-                print(
-                    "Emotion collection will wait "
-                    "for successful calibration."
-                )
+                self.auto_calibration_started = False
+                print("Calibration can retry on the next eligible frame.")
 
         return calibrator.get_status()
 

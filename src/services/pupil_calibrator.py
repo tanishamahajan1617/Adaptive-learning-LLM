@@ -7,8 +7,8 @@ class PupilCalibrator:
     def __init__(
         self,
         calibration_duration=3.0,
-        min_samples=5,
-        max_calibration_duration=10.0
+        min_samples=3,
+        max_calibration_duration=5.0
     ):
 
         self.calibration_duration = calibration_duration
